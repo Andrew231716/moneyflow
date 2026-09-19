@@ -94,7 +94,7 @@ export default function ConnectBankClient() {
   return (
     <div className="mx-auto max-w-2xl space-y-6">
       <div className="space-y-2">
-        <p className="text-sm text-muted-foreground">
+        <p className="text-sm text-muted-foreground leading-relaxed">
           Open Banking in sola lettura: MoneyFlow non chiede mai le tue
           credenziali bancarie. L&apos;autorizzazione avviene sul sito sicuro
           della banca.
@@ -104,7 +104,7 @@ export default function ConnectBankClient() {
 
       {statusMessage && (
         <div
-          className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900"
+          className="rounded-xl border border-warning/30 bg-warning/10 px-3 py-2.5 text-sm text-foreground"
           role="status"
         >
           {statusMessage}
@@ -113,7 +113,7 @@ export default function ConnectBankClient() {
 
       {error && (
         <div
-          className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800"
+          className="rounded-xl border border-destructive/25 bg-destructive/5 px-3 py-2.5 text-sm text-destructive"
           role="alert"
         >
           {error}
@@ -123,7 +123,7 @@ export default function ConnectBankClient() {
       <div className="relative">
         <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
         <Input
-          className="pl-9"
+          className="pl-9 min-h-touch"
           placeholder="Cerca banca (es. Intesa Sanpaolo)…"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
@@ -134,7 +134,7 @@ export default function ConnectBankClient() {
       {suggested && !query.trim() && (
         <section className="space-y-2">
           <h2 className="flex items-center gap-2 text-sm font-medium">
-            <Star className="size-4 text-teal-600" />
+            <Star className="size-4 text-primary" />
             Suggerita per te
           </h2>
           <InstitutionRow
@@ -151,17 +151,17 @@ export default function ConnectBankClient() {
           Banche disponibili in Italia
         </h2>
         {loading ? (
-          <div className="flex items-center gap-2 py-8 text-sm text-muted-foreground">
+          <div className="flex items-center gap-2 py-8 text-sm text-muted-foreground justify-center">
             <Loader2 className="size-4 animate-spin" />
             Caricamento banche…
           </div>
         ) : list.length === 0 ? (
-          <p className="py-8 text-sm text-muted-foreground">
+          <p className="py-8 text-sm text-muted-foreground text-center">
             Nessuna banca trovata. Prova un altro nome o lascia vuota la ricerca
             per vedere l&apos;elenco completo.
           </p>
         ) : (
-          <ul className="divide-y rounded-md border bg-card">
+          <ul className="mf-surface divide-y overflow-hidden">
             {list.map((inst) => (
               <li key={inst.id}>
                 <InstitutionRow
@@ -191,11 +191,11 @@ function InstitutionRow({
 }) {
   return (
     <div
-      className={`flex items-center gap-3 px-3 py-3 ${
-        highlight ? "rounded-md border border-teal-200 bg-teal-50/50" : ""
+      className={`flex items-center gap-3 px-3 py-3 min-h-touch ${
+        highlight ? "rounded-xl border border-primary/25 bg-primary/5" : ""
       }`}
     >
-      <div className="flex size-10 shrink-0 items-center justify-center overflow-hidden rounded-md bg-muted">
+      <div className="flex size-10 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-muted">
         {institution.logo ? (
           <Image
             src={institution.logo}
@@ -219,6 +219,7 @@ function InstitutionRow({
       </div>
       <Button
         size="sm"
+        className="min-h-touch"
         onClick={onConnect}
         disabled={connecting}
         aria-label={`Collega ${institution.name}`}

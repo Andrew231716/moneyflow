@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import { AppShell } from "@/components/layout/app-shell";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
 import {
@@ -7,6 +8,7 @@ import {
   fetchTransactions,
 } from "@/lib/data/queries";
 import { TransactionsManager } from "@/features/transactions/transactions-manager";
+import { LoadingState } from "@/components/money";
 
 export default async function TransactionsPage() {
   if (!hasSupabaseEnv()) return null;
@@ -18,12 +20,14 @@ export default async function TransactionsPage() {
   ]);
   return (
     <AppShell title="Movimenti">
-      <TransactionsManager
-        transactions={transactions}
-        accounts={accounts}
-        categories={categories}
-        rules={rules}
-      />
+      <Suspense fallback={<LoadingState label="Caricamento movimenti…" />}>
+        <TransactionsManager
+          transactions={transactions}
+          accounts={accounts}
+          categories={categories}
+          rules={rules}
+        />
+      </Suspense>
     </AppShell>
   );
 }

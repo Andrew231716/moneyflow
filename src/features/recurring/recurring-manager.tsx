@@ -11,19 +11,10 @@ import type {
 } from "@/types/database";
 import { createClient } from "@/lib/supabase/client";
 import { calcRecurringTotals } from "@/lib/finance/engine";
-import { formatCurrency } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 import {
   Select,
   SelectContent,
@@ -31,6 +22,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  PageHeader,
+  EmptyState,
+  MoneyValue,
+  AmountInput,
+  ResponsiveFormShell,
+} from "@/components/money";
+import { Repeat } from "lucide-react";
 
 const freqLabels: Record<RecurringFrequency, string> = {
   weekly: "Settimanale",
@@ -93,166 +92,177 @@ export function RecurringManager({
   }
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="flex gap-3 text-sm">
-          <span>
-            Mensile netto:{" "}
-            <strong className={totals.monthly >= 0 ? "text-success" : "text-destructive"}>
-              {formatCurrency(totals.monthly)}
-            </strong>
-          </span>
-          <span className="text-muted-foreground">
-            Annuo: {formatCurrency(totals.yearly)}
-          </span>
+    <div className="space-y-5">
+      <PageHeader
+        title="Ricorrenti"
+        description="Abbonamenti e movimenti periodici"
+        actions={
+          <Button onClick={() => setOpen(true)} className="min-h-touch">
+            Nuovo ricorrente
+          </Button>
+        }
+      />
+
+      <div className="mf-surface p-4 flex flex-wrap gap-4 text-sm">
+        <div>
+          <p className="text-xs text-muted-foreground">Mensile netto</p>
+          <MoneyValue
+            amount={totals.monthly}
+            size="md"
+            tone={totals.monthly >= 0 ? "success" : "danger"}
+          />
         </div>
-        <Button onClick={() => setOpen(true)}>Nuovo ricorrente</Button>
+        <div>
+          <p className="text-xs text-muted-foreground">Annuo</p>
+          <MoneyValue amount={totals.yearly} size="md" />
+        </div>
       </div>
 
-      <div className="space-y-2">
-        {items.map((r) => (
-          <Card key={r.id}>
-            <CardHeader className="flex-row items-center justify-between space-y-0 py-3">
-              <div>
-                <CardTitle className="text-base">{r.description}</CardTitle>
-                <p className="text-xs text-muted-foreground mt-1">
+      {items.length === 0 ? (
+        <EmptyState
+          icon={<Repeat className="h-6 w-6" />}
+          title="Nessuna ricorrenza"
+          description="Aggiungi affitto, stipendio o abbonamenti."
+          action={<Button onClick={() => setOpen(true)}>Nuovo ricorrente</Button>}
+        />
+      ) : (
+        <div className="space-y-2">
+          {items.map((r) => (
+            <div
+              key={r.id}
+              className="mf-surface flex items-center justify-between gap-3 p-4"
+            >
+              <div className="min-w-0">
+                <p className="font-medium truncate">{r.description}</p>
+                <p className="text-xs text-muted-foreground mt-0.5">
                   Prossimo: {r.next_due_date} · {r.account?.name}
                 </p>
               </div>
-              <div className="text-right">
-                <p
-                  className={`font-semibold ${
-                    r.type === "income" ? "text-success" : "text-destructive"
-                  }`}
-                >
-                  {formatCurrency(Number(r.amount))}
-                </p>
+              <div className="text-right shrink-0 space-y-1">
+                <MoneyValue
+                  amount={Number(r.amount)}
+                  size="sm"
+                  type={r.type}
+                />
                 <Badge variant="secondary">{freqLabels[r.frequency]}</Badge>
               </div>
-            </CardHeader>
-          </Card>
-        ))}
-        {items.length === 0 && (
-          <Card>
-            <CardContent className="py-8 text-center text-sm text-muted-foreground">
-              Nessuna ricorrenza.
-            </CardContent>
-          </Card>
-        )}
-      </div>
+            </div>
+          ))}
+        </div>
+      )}
 
-      <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Movimento ricorrente</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-3">
-            <div className="space-y-2">
-              <Label>Descrizione</Label>
-              <Input
-                value={form.description}
-                onChange={(e) => setForm({ ...form, description: e.target.value })}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>Importo</Label>
-              <Input
-                value={form.amount}
-                onChange={(e) => setForm({ ...form, amount: e.target.value })}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>Tipo</Label>
-              <Select
-                value={form.type}
-                onValueChange={(v) => setForm({ ...form, type: v as "income" | "expense" })}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="expense">Uscita</SelectItem>
-                  <SelectItem value="income">Entrata</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label>Frequenza</Label>
-              <Select
-                value={form.frequency}
-                onValueChange={(v) =>
-                  setForm({ ...form, frequency: v as RecurringFrequency })
-                }
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {(Object.keys(freqLabels) as RecurringFrequency[]).map((f) => (
-                    <SelectItem key={f} value={f}>
-                      {freqLabels[f]}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label>Conto</Label>
-              <Select
-                value={form.account_id}
-                onValueChange={(v) => setForm({ ...form, account_id: v })}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {accounts.map((a) => (
-                    <SelectItem key={a.id} value={a.id}>
-                      {a.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label>Categoria</Label>
-              <Select
-                value={form.category_id || "__none__"}
-                onValueChange={(v) =>
-                  setForm({ ...form, category_id: v === "__none__" ? "" : v })
-                }
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="__none__">Nessuna</SelectItem>
-                  {categories
-                    .filter((c) => c.type === form.type)
-                    .map((c) => (
-                      <SelectItem key={c.id} value={c.id}>
-                        {c.name}
-                      </SelectItem>
-                    ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label>Prossima scadenza</Label>
-              <Input
-                type="date"
-                value={form.next_due_date}
-                onChange={(e) => setForm({ ...form, next_due_date: e.target.value })}
-              />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button onClick={save} disabled={saving || !form.description || !form.amount}>
-              Salva
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <ResponsiveFormShell
+        open={open}
+        onOpenChange={setOpen}
+        title="Movimento ricorrente"
+        footer={
+          <Button
+            onClick={save}
+            disabled={saving || !form.description || !form.amount}
+            className="w-full sm:w-auto min-h-touch"
+          >
+            {saving ? "Salvataggio…" : "Salva"}
+          </Button>
+        }
+      >
+        <AmountInput
+          value={form.amount}
+          onChange={(amount) => setForm({ ...form, amount })}
+        />
+        <div className="space-y-2">
+          <Label>Descrizione</Label>
+          <Input
+            value={form.description}
+            onChange={(e) => setForm({ ...form, description: e.target.value })}
+            className="min-h-touch"
+          />
+        </div>
+        <div className="space-y-2">
+          <Label>Tipo</Label>
+          <Select
+            value={form.type}
+            onValueChange={(v) => setForm({ ...form, type: v as "income" | "expense" })}
+          >
+            <SelectTrigger className="min-h-touch">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="expense">Uscita</SelectItem>
+              <SelectItem value="income">Entrata</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="space-y-2">
+          <Label>Frequenza</Label>
+          <Select
+            value={form.frequency}
+            onValueChange={(v) =>
+              setForm({ ...form, frequency: v as RecurringFrequency })
+            }
+          >
+            <SelectTrigger className="min-h-touch">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {(Object.keys(freqLabels) as RecurringFrequency[]).map((f) => (
+                <SelectItem key={f} value={f}>
+                  {freqLabels[f]}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="space-y-2">
+          <Label>Conto</Label>
+          <Select
+            value={form.account_id}
+            onValueChange={(v) => setForm({ ...form, account_id: v })}
+          >
+            <SelectTrigger className="min-h-touch">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {accounts.map((a) => (
+                <SelectItem key={a.id} value={a.id}>
+                  {a.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="space-y-2">
+          <Label>Categoria</Label>
+          <Select
+            value={form.category_id || "__none__"}
+            onValueChange={(v) =>
+              setForm({ ...form, category_id: v === "__none__" ? "" : v })
+            }
+          >
+            <SelectTrigger className="min-h-touch">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="__none__">Nessuna</SelectItem>
+              {categories
+                .filter((c) => c.type === form.type)
+                .map((c) => (
+                  <SelectItem key={c.id} value={c.id}>
+                    {c.name}
+                  </SelectItem>
+                ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="space-y-2">
+          <Label>Prossima scadenza</Label>
+          <Input
+            type="date"
+            value={form.next_due_date}
+            onChange={(e) => setForm({ ...form, next_due_date: e.target.value })}
+            className="min-h-touch"
+          />
+        </div>
+      </ResponsiveFormShell>
     </div>
   );
 }

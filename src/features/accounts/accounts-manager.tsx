@@ -3,23 +3,12 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Landmark, Plus, Pencil, Archive } from "lucide-react";
+import { Landmark, Plus, Wallet } from "lucide-react";
 import { toast } from "sonner";
 import type { Account, AccountType } from "@/types/database";
-import { formatCurrency } from "@/lib/utils";
 import { createClient } from "@/lib/supabase/client";
 import { writeAudit } from "@/lib/data/mutations";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import {
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -30,13 +19,15 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { BankConnectionsPanel } from "@/features/open-banking/components/bank-connections-panel";
-
-const typeLabels: Record<AccountType, string> = {
-  bank: "Banca",
-  card: "Carta",
-  cash: "Contanti",
-  savings: "Risparmi",
-};
+import {
+  PageHeader,
+  AccountCard,
+  accountTypeLabels,
+  EmptyState,
+  MoneyValue,
+  AmountInput,
+  ResponsiveFormShell,
+} from "@/components/money";
 
 const emptyForm = {
   name: "",
@@ -51,6 +42,8 @@ export function AccountsManager({ accounts }: { accounts: Account[] }) {
   const [editing, setEditing] = useState<Account | null>(null);
   const [form, setForm] = useState(emptyForm);
   const [saving, setSaving] = useState(false);
+
+  const total = accounts.reduce((s, a) => s + Number(a.balance), 0);
 
   function openCreate() {
     setEditing(null);
@@ -143,126 +136,116 @@ export function AccountsManager({ accounts }: { accounts: Account[] }) {
   }
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="text-sm text-muted-foreground">
-          Totale:{" "}
-          <span className="font-semibold text-foreground">
-            {formatCurrency(
-              accounts.reduce((s, a) => s + Number(a.balance), 0)
-            )}
-          </span>
-        </p>
-        <div className="flex flex-wrap gap-2">
-          <Button asChild variant="outline">
-            <Link href="/accounts/connect-bank">
-              <Landmark className="h-4 w-4" />
-              Collega banca
-            </Link>
-          </Button>
-          <Dialog open={open} onOpenChange={setOpen}>
-            <DialogTrigger asChild>
-              <Button onClick={openCreate}>
-                <Plus className="h-4 w-4" />
-                Nuovo conto
-              </Button>
-            </DialogTrigger>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>{editing ? "Modifica conto" : "Nuovo conto"}</DialogTitle>
-              </DialogHeader>
-              <div className="space-y-3">
-                <div className="space-y-2">
-                  <Label>Nome</Label>
-                  <Input
-                    value={form.name}
-                    onChange={(e) => setForm({ ...form, name: e.target.value })}
-                    placeholder="Conto corrente"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Tipo</Label>
-                  <Select
-                    value={form.type}
-                    onValueChange={(v) => setForm({ ...form, type: v as AccountType })}
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {(Object.keys(typeLabels) as AccountType[]).map((t) => (
-                        <SelectItem key={t} value={t}>
-                          {typeLabels[t]}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label>Saldo</Label>
-                  <Input
-                    value={form.balance}
-                    onChange={(e) => setForm({ ...form, balance: e.target.value })}
-                    inputMode="decimal"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Colore</Label>
-                  <Input
-                    type="color"
-                    value={form.color}
-                    onChange={(e) => setForm({ ...form, color: e.target.value })}
-                    className="h-10 w-20 p-1"
-                  />
-                </div>
-              </div>
-              <DialogFooter>
-                <Button onClick={save} disabled={saving || !form.name.trim()}>
-                  {saving ? "Salvataggio…" : "Salva"}
-                </Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
-        </div>
+    <div className="space-y-5">
+      <PageHeader
+        title="Conti"
+        description="Saldi e collegamenti bancari"
+        actions={
+          <>
+            <Button asChild variant="outline" className="min-h-touch">
+              <Link href="/accounts/connect-bank">
+                <Landmark className="h-4 w-4" />
+                Collega banca
+              </Link>
+            </Button>
+            <Button onClick={openCreate} className="min-h-touch">
+              <Plus className="h-4 w-4" />
+              Nuovo conto
+            </Button>
+          </>
+        }
+      />
+
+      <div className="mf-surface p-4 flex items-center justify-between gap-3">
+        <p className="text-sm text-muted-foreground">Totale disponibilità</p>
+        <MoneyValue amount={total} size="lg" />
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        {accounts.map((a) => (
-          <Card key={a.id} className="overflow-hidden">
-            <div className="h-1.5" style={{ background: a.color }} />
-            <CardHeader className="flex-row items-start justify-between space-y-0 pb-2">
-              <div>
-                <CardTitle className="text-base">{a.name}</CardTitle>
-                <Badge variant="secondary" className="mt-1">
-                  {typeLabels[a.type]}
-                </Badge>
-              </div>
-              <div className="flex gap-1">
-                <Button variant="ghost" size="icon" onClick={() => openEdit(a)}>
-                  <Pencil className="h-4 w-4" />
-                </Button>
-                <Button variant="ghost" size="icon" onClick={() => archive(a)}>
-                  <Archive className="h-4 w-4" />
-                </Button>
-              </div>
-            </CardHeader>
-            <CardContent>
-              <p className="text-2xl font-semibold tracking-tight">
-                {formatCurrency(Number(a.balance))}
-              </p>
-            </CardContent>
-          </Card>
-        ))}
-        {accounts.length === 0 && (
-          <Card className="sm:col-span-2 lg:col-span-3 border-dashed">
-            <CardContent className="py-10 text-center text-sm text-muted-foreground">
-              Nessun conto. Creane uno o collega una banca.
-            </CardContent>
-          </Card>
-        )}
-      </div>
+      {accounts.length === 0 ? (
+        <EmptyState
+          icon={<Wallet className="h-6 w-6" />}
+          title="Nessun conto"
+          description="Creane uno manualmente o collega una banca con Open Banking."
+          action={
+            <div className="flex flex-wrap justify-center gap-2">
+              <Button onClick={openCreate}>Nuovo conto</Button>
+              <Button asChild variant="outline">
+                <Link href="/accounts/connect-bank">Collega banca</Link>
+              </Button>
+            </div>
+          }
+        />
+      ) : (
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {accounts.map((a) => (
+            <AccountCard
+              key={a.id}
+              account={a}
+              onEdit={() => openEdit(a)}
+              onArchive={() => archive(a)}
+            />
+          ))}
+        </div>
+      )}
 
       <BankConnectionsPanel />
+
+      <ResponsiveFormShell
+        open={open}
+        onOpenChange={setOpen}
+        title={editing ? "Modifica conto" : "Nuovo conto"}
+        footer={
+          <Button
+            onClick={save}
+            disabled={saving || !form.name.trim()}
+            className="w-full sm:w-auto min-h-touch"
+          >
+            {saving ? "Salvataggio…" : "Salva"}
+          </Button>
+        }
+      >
+        <div className="space-y-2">
+          <Label>Nome</Label>
+          <Input
+            value={form.name}
+            onChange={(e) => setForm({ ...form, name: e.target.value })}
+            placeholder="Conto corrente"
+            className="min-h-touch"
+          />
+        </div>
+        <div className="space-y-2">
+          <Label>Tipo</Label>
+          <Select
+            value={form.type}
+            onValueChange={(v) => setForm({ ...form, type: v as AccountType })}
+          >
+            <SelectTrigger className="min-h-touch">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {(Object.keys(accountTypeLabels) as AccountType[]).map((t) => (
+                <SelectItem key={t} value={t}>
+                  {accountTypeLabels[t]}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <AmountInput
+          label="Saldo"
+          value={form.balance}
+          onChange={(balance) => setForm({ ...form, balance })}
+        />
+        <div className="space-y-2">
+          <Label>Colore</Label>
+          <Input
+            type="color"
+            value={form.color}
+            onChange={(e) => setForm({ ...form, color: e.target.value })}
+            className="h-11 w-20 p-1"
+          />
+        </div>
+      </ResponsiveFormShell>
     </div>
   );
 }

@@ -50,10 +50,11 @@ export default async function DashboardPage() {
   const recent = transactions.filter((t) => t.type !== "transfer").slice(0, 8);
 
   return (
-    <AppShell title="Dashboard">
+    <AppShell title="Home">
       <DashboardView
         availability={availability}
         summary={summary}
+        previousSummary={previousSummary}
         series={series}
         byCategory={byCategory}
         budgetProgress={budgetProgress}

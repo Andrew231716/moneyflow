@@ -28,7 +28,6 @@ import {
 } from "@/lib/data/mutations";
 import { formatCurrency } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -333,62 +332,61 @@ export function AssistantPanel({
 
   return (
     <div className="grid gap-4 lg:grid-cols-3">
-      <Card className="lg:col-span-2">
-        <CardHeader>
-          <CardTitle>Assistente locale</CardTitle>
-          <CardDescription>
+      <div className="mf-surface p-5 space-y-4 lg:col-span-2">
+        <div>
+          <h2 className="text-base font-semibold tracking-tight">Assistente locale</h2>
+          <p className="text-xs text-muted-foreground mt-0.5">
             Parser + regole — nessuna API a pagamento
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="h-72 overflow-y-auto space-y-2 rounded-lg border bg-muted/30 p-3">
-            {messages.map((m, i) => (
-              <div
-                key={i}
-                className={`max-w-[90%] rounded-lg px-3 py-2 text-sm ${
-                  m.role === "user"
-                    ? "ml-auto bg-primary text-primary-foreground"
-                    : "bg-card border"
-                }`}
-              >
-                {m.text}
-              </div>
-            ))}
-          </div>
-          <form
-            className="flex gap-2"
-            onSubmit={(e) => {
-              e.preventDefault();
-              void handle(input);
-            }}
-          >
-            <Input
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              placeholder='Es. "spesa 25 esselunga"'
-            />
-            <Button type="submit">Invia</Button>
-          </form>
-        </CardContent>
-      </Card>
+          </p>
+        </div>
+        <div className="h-72 overflow-y-auto space-y-2 rounded-xl border bg-muted/30 p-3">
+          {messages.map((m, i) => (
+            <div
+              key={i}
+              className={`max-w-[90%] rounded-xl px-3 py-2 text-sm ${
+                m.role === "user"
+                  ? "ml-auto bg-primary text-primary-foreground"
+                  : "bg-card border shadow-soft"
+              }`}
+            >
+              {m.text}
+            </div>
+          ))}
+        </div>
+        <form
+          className="flex gap-2"
+          onSubmit={(e) => {
+            e.preventDefault();
+            void handle(input);
+          }}
+        >
+          <Input
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            placeholder='Es. "spesa 25 esselunga"'
+            className="min-h-touch"
+          />
+          <Button type="submit" className="min-h-touch shrink-0">
+            Invia
+          </Button>
+        </form>
+      </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Esempi</CardTitle>
-        </CardHeader>
-        <CardContent className="flex flex-wrap gap-2">
+      <div className="mf-surface p-5 space-y-3">
+        <h2 className="text-base font-semibold tracking-tight">Esempi</h2>
+        <div className="flex flex-wrap gap-2">
           {ASSISTANT_EXAMPLES.map((ex) => (
             <Badge
               key={ex}
               variant="secondary"
-              className="cursor-pointer"
+              className="cursor-pointer min-h-10 px-3 py-2"
               onClick={() => void handle(ex)}
             >
               {ex}
             </Badge>
           ))}
-        </CardContent>
-      </Card>
+        </div>
+      </div>
 
       <Dialog open={Boolean(pending)} onOpenChange={(o) => !o && setPending(null)}>
         <DialogContent>

@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   Area,
   AreaChart,
@@ -13,12 +14,9 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Progress } from "@/components/ui/progress";
+import { Wallet, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { formatCurrency } from "@/lib/utils";
-import { calcGoalProgress } from "@/lib/finance/engine";
 import type {
   BudgetProgress,
   Goal,
@@ -27,17 +25,24 @@ import type {
   Transaction,
 } from "@/types/database";
 import { DemoSeedButton } from "@/features/analytics/demo-seed-button";
-
-const stateColor: Record<string, string> = {
-  ok: "bg-success",
-  warn: "bg-warning",
-  critical: "bg-orange-500",
-  over: "bg-destructive",
-};
+import {
+  StatCard,
+  MoneyValue,
+  BudgetCard,
+  TransactionItem,
+  GoalCard,
+  InsightCard,
+  EmptyState,
+  SectionHeader,
+  QuickActions,
+  ChartCard,
+  defaultQuickActions,
+} from "@/components/money";
 
 export function DashboardView(props: {
   availability: number;
   summary: MonthSummary;
+  previousSummary: MonthSummary;
   series: {
     month: string;
     label: string;
@@ -62,6 +67,7 @@ export function DashboardView(props: {
   const {
     availability,
     summary,
+    previousSummary,
     series,
     byCategory,
     budgetProgress,
@@ -72,307 +78,232 @@ export function DashboardView(props: {
     isEmpty,
   } = props;
 
+  const router = useRouter();
+  const savingsDelta = summary.savings - previousSummary.savings;
+  const savingsDeltaPositive = savingsDelta >= 0;
+
+  const quickActions = defaultQuickActions({
+    onExpense: () => router.push("/transactions?new=expense"),
+    onIncome: () => router.push("/transactions?new=income"),
+    onTransfer: () => router.push("/transactions?new=transfer"),
+    importHref: "/transactions/import",
+  });
+
   return (
     <div className="space-y-6">
       {isEmpty && (
-        <Card className="border-dashed border-primary/30 bg-primary/5">
-          <CardHeader>
-            <CardTitle>Benvenuto in MoneyFlow</CardTitle>
-            <CardDescription>
-              Aggiungi un conto o carica dati demo per iniziare. Puoi anche collegare una banca.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="flex flex-wrap gap-2">
-            <Button asChild>
-              <Link href="/accounts">Crea un conto</Link>
-            </Button>
-            <Button asChild variant="outline">
-              <Link href="/accounts/connect-bank">Collega banca</Link>
-            </Button>
-            <DemoSeedButton />
-          </CardContent>
-        </Card>
+        <EmptyState
+          icon={<Sparkles className="h-6 w-6" />}
+          title="Benvenuto in MoneyFlow"
+          description="Aggiungi un conto o carica dati demo per iniziare. Puoi anche collegare una banca."
+          action={
+            <div className="flex flex-wrap justify-center gap-2">
+              <Button asChild>
+                <Link href="/accounts">Crea un conto</Link>
+              </Button>
+              <Button asChild variant="outline">
+                <Link href="/accounts/connect-bank">Collega banca</Link>
+              </Button>
+              <DemoSeedButton />
+            </div>
+          }
+        />
       )}
 
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <StatCard title="Disponibilità" value={formatCurrency(availability)} hint="Tutti i conti" />
-        <StatCard
-          title="Entrate mese"
-          value={formatCurrency(summary.income)}
-          hint="Escluse trasferimenti"
-          tone="success"
-        />
-        <StatCard
-          title="Uscite mese"
-          value={formatCurrency(summary.expense)}
-          hint="Escluse trasferimenti"
-          tone="danger"
-        />
+      <StatCard
+        hero
+        title="Disponibilità"
+        value={availability}
+        hint="Tutti i conti"
+        trend={{
+          label:
+            previousSummary.savings === 0 && summary.savings === 0
+              ? "Risparmio mese corrente"
+              : `${savingsDeltaPositive ? "+" : ""}${formatCurrency(savingsDelta)} vs mese scorso`,
+          positive: savingsDelta === 0 ? undefined : savingsDeltaPositive,
+        }}
+      />
+
+      <QuickActions actions={quickActions} />
+
+      <div className="grid gap-3 sm:grid-cols-3">
+        <StatCard title="Entrate" value={summary.income} tone="success" hint="Mese corrente" />
+        <StatCard title="Uscite" value={summary.expense} tone="danger" hint="Mese corrente" />
         <StatCard
           title="Risparmio"
-          value={formatCurrency(summary.savings)}
+          value={summary.savings}
+          tone={summary.savings >= 0 ? "success" : "danger"}
           hint={`${summary.savingsRate.toFixed(0)}% delle entrate`}
         />
       </div>
 
       <div className="grid gap-4 lg:grid-cols-3">
-        <Card className="lg:col-span-2">
-          <CardHeader>
-            <CardTitle>Andamento 6 mesi</CardTitle>
-            <CardDescription>Entrate vs uscite (senza trasferimenti)</CardDescription>
-          </CardHeader>
-          <CardContent className="h-64">
+        <ChartCard
+          title="Andamento"
+          description="Entrate vs uscite · 6 mesi"
+          className="lg:col-span-2"
+          contentClassName="h-56 sm:h-64"
+        >
+          <ResponsiveContainer width="100%" height="100%">
+            <AreaChart data={series}>
+              <defs>
+                <linearGradient id="inc" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="hsl(152 64% 34%)" stopOpacity={0.35} />
+                  <stop offset="100%" stopColor="hsl(152 64% 34%)" stopOpacity={0} />
+                </linearGradient>
+                <linearGradient id="exp" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="hsl(0 72% 48%)" stopOpacity={0.28} />
+                  <stop offset="100%" stopColor="hsl(0 72% 48%)" stopOpacity={0} />
+                </linearGradient>
+              </defs>
+              <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
+              <XAxis dataKey="label" tick={{ fontSize: 12 }} />
+              <YAxis tick={{ fontSize: 12 }} width={48} />
+              <Tooltip
+                formatter={(v: number) => formatCurrency(v)}
+                contentStyle={{ borderRadius: 12, border: "1px solid hsl(var(--border))" }}
+              />
+              <Area
+                type="monotone"
+                dataKey="income"
+                name="Entrate"
+                stroke="hsl(152 64% 34%)"
+                fill="url(#inc)"
+              />
+              <Area
+                type="monotone"
+                dataKey="expense"
+                name="Uscite"
+                stroke="hsl(0 72% 48%)"
+                fill="url(#exp)"
+              />
+            </AreaChart>
+          </ResponsiveContainer>
+        </ChartCard>
+
+        <ChartCard title="Categorie" description="Spese del mese" contentClassName="h-56 sm:h-64">
+          {byCategory.length === 0 ? (
+            <p className="text-sm text-muted-foreground py-12 text-center">Nessuna spesa</p>
+          ) : (
             <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={series}>
-                <defs>
-                  <linearGradient id="inc" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="hsl(142 71% 35%)" stopOpacity={0.35} />
-                    <stop offset="100%" stopColor="hsl(142 71% 35%)" stopOpacity={0} />
-                  </linearGradient>
-                  <linearGradient id="exp" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="hsl(0 72% 51%)" stopOpacity={0.3} />
-                    <stop offset="100%" stopColor="hsl(0 72% 51%)" stopOpacity={0} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
-                <XAxis dataKey="label" tick={{ fontSize: 12 }} />
-                <YAxis tick={{ fontSize: 12 }} width={48} />
-                <Tooltip
-                  formatter={(v: number) => formatCurrency(v)}
-                  contentStyle={{ borderRadius: 12 }}
-                />
-                <Area type="monotone" dataKey="income" name="Entrate" stroke="hsl(142 71% 35%)" fill="url(#inc)" />
-                <Area type="monotone" dataKey="expense" name="Uscite" stroke="hsl(0 72% 51%)" fill="url(#exp)" />
-              </AreaChart>
+              <PieChart>
+                <Pie
+                  data={byCategory.slice(0, 6)}
+                  dataKey="total"
+                  nameKey="name"
+                  innerRadius={48}
+                  outerRadius={80}
+                  paddingAngle={2}
+                >
+                  {byCategory.slice(0, 6).map((c) => (
+                    <Cell key={c.name} fill={c.color} />
+                  ))}
+                </Pie>
+                <Tooltip formatter={(v: number) => formatCurrency(v)} />
+              </PieChart>
             </ResponsiveContainer>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>Spese per categoria</CardTitle>
-            <CardDescription>Mese corrente</CardDescription>
-          </CardHeader>
-          <CardContent className="h-64">
-            {byCategory.length === 0 ? (
-              <p className="text-sm text-muted-foreground py-12 text-center">Nessuna spesa</p>
-            ) : (
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie
-                    data={byCategory.slice(0, 6)}
-                    dataKey="total"
-                    nameKey="name"
-                    innerRadius={48}
-                    outerRadius={80}
-                    paddingAngle={2}
-                  >
-                    {byCategory.slice(0, 6).map((c) => (
-                      <Cell key={c.name} fill={c.color} />
-                    ))}
-                  </Pie>
-                  <Tooltip formatter={(v: number) => formatCurrency(v)} />
-                </PieChart>
-              </ResponsiveContainer>
-            )}
-          </CardContent>
-        </Card>
-      </div>
-
-      <div className="grid gap-4 lg:grid-cols-3">
-        <Card>
-          <CardHeader>
-            <CardTitle>Previsione fine mese</CardTitle>
-            <CardDescription>{forecast.daysLeft} giorni rimanenti</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-2 text-sm">
-            <Row label="Entrate stimate" value={formatCurrency(forecast.projectedIncome)} />
-            <Row label="Uscite stimate" value={formatCurrency(forecast.projectedExpense)} />
-            <Row
-              label="Saldo stimato"
-              value={formatCurrency(forecast.projectedSavings)}
-              strong
-            />
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex-row items-center justify-between space-y-0">
-            <div>
-              <CardTitle>Budget</CardTitle>
-              <CardDescription>Progresso mensile</CardDescription>
-            </div>
-            <Button asChild variant="ghost" size="sm">
-              <Link href="/budgets">Vedi</Link>
-            </Button>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {budgetProgress.length === 0 && (
-              <p className="text-sm text-muted-foreground">Nessun budget impostato</p>
-            )}
-            {budgetProgress.slice(0, 4).map((b) => (
-              <div key={b.budget.id} className="space-y-1">
-                <div className="flex justify-between text-xs">
-                  <span>{b.budget.category?.name ?? "Categoria"}</span>
-                  <span>{b.percent.toFixed(0)}%</span>
-                </div>
-                <Progress
-                  value={Math.min(100, b.percent)}
-                  indicatorClassName={stateColor[b.state]}
-                />
-              </div>
-            ))}
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>Insight</CardTitle>
-            <CardDescription>Suggerimenti automatici</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-2">
-            {insights.length === 0 && (
-              <p className="text-sm text-muted-foreground">Nessun insight per ora</p>
-            )}
-            {insights.map((i) => (
-              <div key={i.id} className="rounded-lg border p-2.5">
-                <div className="flex items-center gap-2">
-                  <Badge
-                    variant={
-                      i.type === "success"
-                        ? "success"
-                        : i.type === "warning"
-                          ? "warning"
-                          : "secondary"
-                    }
-                  >
-                    {i.title}
-                  </Badge>
-                </div>
-                <p className="mt-1 text-xs text-muted-foreground">{i.message}</p>
-              </div>
-            ))}
-          </CardContent>
-        </Card>
+          )}
+        </ChartCard>
       </div>
 
       <div className="grid gap-4 lg:grid-cols-2">
-        <Card>
-          <CardHeader className="flex-row items-center justify-between space-y-0">
-            <CardTitle>Ultimi movimenti</CardTitle>
-            <Button asChild variant="ghost" size="sm">
-              <Link href="/transactions">Tutti</Link>
-            </Button>
-          </CardHeader>
-          <CardContent className="space-y-2">
-            {recent.length === 0 && (
-              <p className="text-sm text-muted-foreground">Nessun movimento</p>
-            )}
-            {recent.map((tx) => (
-              <div
-                key={tx.id}
-                className="flex items-center justify-between gap-3 rounded-lg border px-3 py-2"
-              >
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-medium">{tx.description || "—"}</p>
-                  <p className="text-xs text-muted-foreground">
-                    {tx.date} · {tx.category?.name ?? "Senza categoria"}
-                  </p>
-                </div>
-                <span
-                  className={
-                    tx.type === "income"
-                      ? "text-sm font-semibold text-success"
-                      : "text-sm font-semibold text-destructive"
-                  }
-                >
-                  {tx.type === "income" ? "+" : "−"}
-                  {formatCurrency(Number(tx.amount))}
-                </span>
-              </div>
-            ))}
-          </CardContent>
-        </Card>
+        <section className="mf-surface p-5 space-y-4">
+          <SectionHeader title="Budget" description="Progresso mensile" href="/budgets" />
+          {budgetProgress.length === 0 ? (
+            <p className="text-sm text-muted-foreground py-4">Nessun budget impostato</p>
+          ) : (
+            <div className="grid gap-3 sm:grid-cols-2">
+              {budgetProgress.slice(0, 4).map((b) => (
+                <BudgetCard key={b.budget.id} progress={b} compact />
+              ))}
+            </div>
+          )}
+        </section>
 
-        <Card>
-          <CardHeader className="flex-row items-center justify-between space-y-0">
-            <CardTitle>Obiettivi</CardTitle>
-            <Button asChild variant="ghost" size="sm">
-              <Link href="/goals">Tutti</Link>
-            </Button>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {goals.length === 0 && (
-              <p className="text-sm text-muted-foreground">Nessun obiettivo attivo</p>
+        <section className="mf-surface p-5 space-y-4">
+          <SectionHeader title="Obiettivi" href="/goals" />
+          {goals.length === 0 ? (
+            <p className="text-sm text-muted-foreground py-4">Nessun obiettivo attivo</p>
+          ) : (
+            <div className="grid gap-3">
+              {goals.slice(0, 3).map((g) => (
+                <GoalCard key={g.id} goal={g} compact />
+              ))}
+            </div>
+          )}
+        </section>
+      </div>
+
+      <div className="grid gap-4 lg:grid-cols-3">
+        <section className="mf-surface p-5 space-y-3 lg:col-span-2">
+          <SectionHeader title="Ultimi movimenti" href="/transactions" linkLabel="Tutti" />
+          {recent.length === 0 ? (
+            <EmptyState
+              className="border-0 shadow-none py-8"
+              icon={<Wallet className="h-5 w-5" />}
+              title="Nessun movimento"
+              description="Registra una spesa o un'entrata per iniziare."
+            />
+          ) : (
+            <div className="divide-y divide-border/60 -mx-1">
+              {recent.map((tx) => (
+                <TransactionItem key={tx.id} transaction={tx} />
+              ))}
+            </div>
+          )}
+        </section>
+
+        <section className="space-y-4">
+          <div className="mf-surface p-5 space-y-3">
+            <SectionHeader
+              title="Previsione"
+              description={`${forecast.daysLeft} giorni rimanenti`}
+            />
+            <div className="space-y-2.5 text-sm">
+              <ForecastRow label="Entrate stimate" amount={forecast.projectedIncome} tone="success" />
+              <ForecastRow label="Uscite stimate" amount={forecast.projectedExpense} tone="danger" />
+              <ForecastRow label="Saldo stimato" amount={forecast.projectedSavings} strong />
+            </div>
+          </div>
+
+          <div className="mf-surface p-5 space-y-3">
+            <SectionHeader title="Insight" description="Suggerimenti automatici" />
+            {insights.length === 0 ? (
+              <p className="text-sm text-muted-foreground">Nessun insight per ora</p>
+            ) : (
+              <div className="space-y-2">
+                {insights.slice(0, 4).map((i) => (
+                  <InsightCard key={i.id} insight={i} />
+                ))}
+              </div>
             )}
-            {goals.map((g) => {
-              const p = calcGoalProgress(g);
-              return (
-                <div key={g.id} className="space-y-1">
-                  <div className="flex justify-between text-sm">
-                    <span className="font-medium">{g.name}</span>
-                    <span className="text-muted-foreground">{p.percent.toFixed(0)}%</span>
-                  </div>
-                  <Progress value={p.percent} />
-                </div>
-              );
-            })}
-          </CardContent>
-        </Card>
+          </div>
+        </section>
       </div>
     </div>
   );
 }
 
-function StatCard({
-  title,
-  value,
-  hint,
-  tone,
-}: {
-  title: string;
-  value: string;
-  hint?: string;
-  tone?: "success" | "danger";
-}) {
-  return (
-    <Card>
-      <CardHeader className="pb-2">
-        <CardDescription>{title}</CardDescription>
-        <CardTitle
-          className={
-            tone === "success"
-              ? "text-2xl text-success"
-              : tone === "danger"
-                ? "text-2xl text-destructive"
-                : "text-2xl"
-          }
-        >
-          {value}
-        </CardTitle>
-      </CardHeader>
-      {hint && (
-        <CardContent>
-          <p className="text-xs text-muted-foreground">{hint}</p>
-        </CardContent>
-      )}
-    </Card>
-  );
-}
-
-function Row({
+function ForecastRow({
   label,
-  value,
+  amount,
+  tone,
   strong,
 }: {
   label: string;
-  value: string;
+  amount: number;
+  tone?: "success" | "danger";
   strong?: boolean;
 }) {
   return (
-    <div className="flex justify-between">
+    <div className="flex justify-between items-baseline gap-3">
       <span className="text-muted-foreground">{label}</span>
-      <span className={strong ? "font-semibold" : ""}>{value}</span>
+      <MoneyValue
+        amount={amount}
+        size="sm"
+        tone={tone ?? "default"}
+        className={strong ? "font-bold" : undefined}
+      />
     </div>
   );
 }

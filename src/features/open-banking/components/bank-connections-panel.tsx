@@ -122,15 +122,15 @@ export function BankConnectionsPanel() {
   }
 
   return (
-    <div className="space-y-4">
+    <div className="mf-surface p-5 space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
-          <h2 className="text-lg font-semibold">Banche collegate</h2>
-          <p className="text-sm text-muted-foreground">
+          <h2 className="text-base font-semibold tracking-tight">Banche collegate</h2>
+          <p className="text-xs text-muted-foreground mt-0.5">
             Open Banking in sola lettura
           </p>
         </div>
-        <Button asChild size="sm">
+        <Button asChild size="sm" className="min-h-touch">
           <Link href="/accounts/connect-bank">
             <Link2 />
             Collega banca
@@ -139,22 +139,22 @@ export function BankConnectionsPanel() {
       </div>
 
       {error && (
-        <p className="text-sm text-red-700" role="alert">
+        <p className="text-sm text-destructive rounded-xl border border-destructive/20 bg-destructive/5 px-3 py-2" role="alert">
           {error}
         </p>
       )}
 
       {loading ? (
-        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+        <div className="flex items-center gap-2 text-sm text-muted-foreground py-6 justify-center">
           <Loader2 className="size-4 animate-spin" />
           Caricamento…
         </div>
       ) : connections.length === 0 ? (
-        <p className="text-sm text-muted-foreground">
+        <p className="text-sm text-muted-foreground py-2">
           Nessuna banca collegata.{" "}
           <Link
             href="/accounts/connect-bank"
-            className="font-medium text-teal-700 underline-offset-2 hover:underline"
+            className="font-medium text-primary underline-offset-2 hover:underline"
           >
             Collega Intesa Sanpaolo o un&apos;altra banca
           </Link>
@@ -165,7 +165,7 @@ export function BankConnectionsPanel() {
           {connections.map((c) => (
             <li
               key={c.id}
-              className="flex flex-col gap-3 rounded-md border p-3 sm:flex-row sm:items-center sm:justify-between"
+              className="flex flex-col gap-3 rounded-xl border bg-background/50 p-4 sm:flex-row sm:items-center sm:justify-between"
             >
               <div className="min-w-0 space-y-1">
                 <div className="flex flex-wrap items-center gap-2">
@@ -175,8 +175,10 @@ export function BankConnectionsPanel() {
                       c.consent_expired || c.status === "expired"
                         ? "destructive"
                         : c.status === "active"
-                          ? "default"
-                          : "secondary"
+                          ? "success"
+                          : c.status === "pending"
+                            ? "warning"
+                            : "secondary"
                     }
                   >
                     {statusLabel(c.status, c.consent_expired)}
@@ -186,7 +188,7 @@ export function BankConnectionsPanel() {
                   Ultima sync: {formatSync(c.last_synced_at)}
                 </p>
                 {c.consent_message && (
-                  <p className="text-xs text-amber-800">{c.consent_message}</p>
+                  <p className="text-xs text-warning">{c.consent_message}</p>
                 )}
                 {c.bank_accounts?.length > 0 && (
                   <p className="text-xs text-muted-foreground">
@@ -201,7 +203,7 @@ export function BankConnectionsPanel() {
                   c.status === "expired" ||
                   c.status === "rejected" ||
                   c.status === "error") && (
-                  <Button asChild size="sm" variant="outline">
+                  <Button asChild size="sm" variant="outline" className="min-h-touch">
                     <Link href="/accounts/connect-bank">Ricollega</Link>
                   </Button>
                 )}
@@ -209,6 +211,7 @@ export function BankConnectionsPanel() {
                   <Button
                     size="sm"
                     variant="outline"
+                    className="min-h-touch"
                     disabled={busyId === c.id}
                     onClick={() => void sync(c.id)}
                   >
@@ -223,6 +226,7 @@ export function BankConnectionsPanel() {
                 <Button
                   size="sm"
                   variant="ghost"
+                  className="min-h-touch"
                   disabled={busyId === c.id}
                   onClick={() => void disconnect(c.id)}
                 >

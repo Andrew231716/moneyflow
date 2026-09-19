@@ -2,23 +2,20 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { Target } from "lucide-react";
 import { toast } from "sonner";
 import type { Goal } from "@/types/database";
 import { createClient } from "@/lib/supabase/client";
-import { calcGoalProgress } from "@/lib/finance/engine";
-import { formatCurrency } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Progress } from "@/components/ui/progress";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+  PageHeader,
+  GoalCard,
+  EmptyState,
+  AmountInput,
+  ResponsiveFormShell,
+} from "@/components/money";
 
 export function GoalsManager({ goals }: { goals: Goal[] }) {
   const router = useRouter();
@@ -76,81 +73,74 @@ export function GoalsManager({ goals }: { goals: Goal[] }) {
   }
 
   return (
-    <div className="space-y-4">
-      <div className="flex justify-end">
-        <Button onClick={() => setOpen(true)}>Nuovo obiettivo</Button>
-      </div>
-      <div className="grid gap-3 sm:grid-cols-2">
-        {goals.map((g) => {
-          const p = calcGoalProgress(g);
-          return (
-            <Card key={g.id}>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-base">{g.name}</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-2">
-                <Progress value={p.percent} />
-                <p className="text-sm text-muted-foreground">
-                  {formatCurrency(Number(g.current_amount))} /{" "}
-                  {formatCurrency(Number(g.target_amount))}
-                </p>
-                {g.status === "active" && (
-                  <Button size="sm" variant="secondary" onClick={() => addProgress(g, 50)}>
-                    +50 €
-                  </Button>
-                )}
-              </CardContent>
-            </Card>
-          );
-        })}
-        {goals.length === 0 && (
-          <p className="text-sm text-muted-foreground">Nessun obiettivo.</p>
-        )}
-      </div>
+    <div className="space-y-5">
+      <PageHeader
+        title="Obiettivi"
+        description="Risparmi e traguardi"
+        actions={
+          <Button onClick={() => setOpen(true)} className="min-h-touch">
+            Nuovo obiettivo
+          </Button>
+        }
+      />
 
-      <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Nuovo obiettivo</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-3">
-            <div className="space-y-2">
-              <Label>Nome</Label>
-              <Input
-                value={form.name}
-                onChange={(e) => setForm({ ...form, name: e.target.value })}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>Target</Label>
-              <Input
-                value={form.target_amount}
-                onChange={(e) => setForm({ ...form, target_amount: e.target.value })}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>Già risparmiato</Label>
-              <Input
-                value={form.current_amount}
-                onChange={(e) => setForm({ ...form, current_amount: e.target.value })}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>Scadenza</Label>
-              <Input
-                type="date"
-                value={form.deadline}
-                onChange={(e) => setForm({ ...form, deadline: e.target.value })}
-              />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button onClick={save} disabled={saving || !form.name || !form.target_amount}>
-              Salva
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      {goals.length === 0 ? (
+        <EmptyState
+          icon={<Target className="h-6 w-6" />}
+          title="Nessun obiettivo"
+          description="Crea un obiettivo di risparmio con target e scadenza."
+          action={<Button onClick={() => setOpen(true)}>Nuovo obiettivo</Button>}
+        />
+      ) : (
+        <div className="grid gap-3 sm:grid-cols-2">
+          {goals.map((g) => (
+            <GoalCard key={g.id} goal={g} onAdd={(d) => addProgress(g, d)} />
+          ))}
+        </div>
+      )}
+
+      <ResponsiveFormShell
+        open={open}
+        onOpenChange={setOpen}
+        title="Nuovo obiettivo"
+        footer={
+          <Button
+            onClick={save}
+            disabled={saving || !form.name || !form.target_amount}
+            className="w-full sm:w-auto min-h-touch"
+          >
+            {saving ? "Salvataggio…" : "Salva"}
+          </Button>
+        }
+      >
+        <AmountInput
+          label="Target"
+          value={form.target_amount}
+          onChange={(target_amount) => setForm({ ...form, target_amount })}
+        />
+        <div className="space-y-2">
+          <Label>Nome</Label>
+          <Input
+            value={form.name}
+            onChange={(e) => setForm({ ...form, name: e.target.value })}
+            className="min-h-touch"
+          />
+        </div>
+        <AmountInput
+          label="Già risparmiato"
+          value={form.current_amount}
+          onChange={(current_amount) => setForm({ ...form, current_amount })}
+        />
+        <div className="space-y-2">
+          <Label>Scadenza</Label>
+          <Input
+            type="date"
+            value={form.deadline}
+            onChange={(e) => setForm({ ...form, deadline: e.target.value })}
+            className="min-h-touch"
+          />
+        </div>
+      </ResponsiveFormShell>
     </div>
   );
 }

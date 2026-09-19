@@ -4,79 +4,156 @@
 
 @layer base {
   :root {
-    --background: 160 20% 98%;
-    --foreground: 168 30% 10%;
+    /* Surfaces — light, airy fintech */
+    --background: 165 25% 97%;
+    --foreground: 170 28% 12%;
     --card: 0 0% 100%;
-    --card-foreground: 168 30% 10%;
+    --card-foreground: 170 28% 12%;
     --popover: 0 0% 100%;
-    --popover-foreground: 168 30% 10%;
-    --primary: 173 80% 32%;
+    --popover-foreground: 170 28% 12%;
+
+    /* Brand teal */
+    --primary: 173 72% 32%;
     --primary-foreground: 0 0% 100%;
-    --secondary: 166 20% 94%;
-    --secondary-foreground: 168 30% 16%;
-    --muted: 160 15% 94%;
-    --muted-foreground: 168 10% 42%;
-    --accent: 173 40% 92%;
-    --accent-foreground: 173 80% 22%;
-    --destructive: 0 72% 51%;
+
+    --secondary: 166 22% 94%;
+    --secondary-foreground: 170 28% 18%;
+    --muted: 160 16% 94%;
+    --muted-foreground: 168 10% 40%;
+    --accent: 173 36% 93%;
+    --accent-foreground: 173 72% 22%;
+
+    /* Semantic: green save/positive, red expense/error, orange/yellow warn */
+    --destructive: 0 72% 48%;
     --destructive-foreground: 0 0% 100%;
-    --success: 142 71% 35%;
+    --success: 152 64% 34%;
     --success-foreground: 0 0% 100%;
-    --warning: 38 92% 45%;
-    --warning-foreground: 0 0% 100%;
-    --border: 166 18% 88%;
-    --input: 166 18% 88%;
-    --ring: 173 80% 32%;
-    --radius: 0.75rem;
+    --warning: 38 92% 46%;
+    --warning-foreground: 0 0% 12%;
+    --income: 152 64% 34%;
+    --expense: 0 72% 48%;
+
+    --border: 166 16% 88%;
+    --input: 166 16% 88%;
+    --ring: 173 72% 32%;
+    --radius: 0.875rem;
+
+    --shadow-soft: 0 1px 2px hsl(170 20% 20% / 0.04), 0 4px 16px hsl(170 20% 20% / 0.05);
+    --shadow-lift: 0 2px 4px hsl(170 20% 20% / 0.05), 0 12px 28px hsl(170 20% 20% / 0.08);
+    --surface-elevated: 0 0% 100%;
+    --sidebar: 0 0% 100%;
+    --sidebar-foreground: 170 28% 12%;
   }
 
   .dark {
-    --background: 170 25% 7%;
-    --foreground: 160 15% 96%;
-    --card: 170 22% 10%;
-    --card-foreground: 160 15% 96%;
-    --popover: 170 22% 10%;
-    --popover-foreground: 160 15% 96%;
-    --primary: 173 70% 42%;
-    --primary-foreground: 170 25% 7%;
-    --secondary: 170 18% 16%;
-    --secondary-foreground: 160 15% 92%;
-    --muted: 170 16% 14%;
-    --muted-foreground: 160 10% 62%;
-    --accent: 173 30% 18%;
-    --accent-foreground: 173 60% 70%;
-    --destructive: 0 62% 45%;
+    /* Elegant dark — not pure black */
+    --background: 172 18% 9%;
+    --foreground: 160 14% 95%;
+    --card: 172 16% 12%;
+    --card-foreground: 160 14% 95%;
+    --popover: 172 16% 13%;
+    --popover-foreground: 160 14% 95%;
+
+    --primary: 173 58% 45%;
+    --primary-foreground: 172 20% 8%;
+
+    --secondary: 172 14% 16%;
+    --secondary-foreground: 160 12% 90%;
+    --muted: 172 12% 15%;
+    --muted-foreground: 160 8% 62%;
+    --accent: 173 22% 18%;
+    --accent-foreground: 173 55% 72%;
+
+    --destructive: 0 58% 48%;
     --destructive-foreground: 0 0% 100%;
-    --success: 142 60% 42%;
+    --success: 152 50% 42%;
     --success-foreground: 0 0% 100%;
-    --warning: 38 85% 50%;
+    --warning: 38 80% 50%;
     --warning-foreground: 0 0% 10%;
-    --border: 170 16% 18%;
-    --input: 170 16% 18%;
-    --ring: 173 70% 42%;
+    --income: 152 50% 45%;
+    --expense: 0 58% 52%;
+
+    --border: 172 12% 18%;
+    --input: 172 12% 18%;
+    --ring: 173 58% 45%;
+
+    --shadow-soft: 0 1px 2px hsl(0 0% 0% / 0.25), 0 4px 16px hsl(0 0% 0% / 0.2);
+    --shadow-lift: 0 2px 6px hsl(0 0% 0% / 0.3), 0 12px 32px hsl(0 0% 0% / 0.28);
+    --surface-elevated: 172 16% 13%;
+    --sidebar: 172 16% 10%;
+    --sidebar-foreground: 160 14% 95%;
   }
 
   * {
     @apply border-border;
   }
 
+  html {
+    scroll-behavior: smooth;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    html {
+      scroll-behavior: auto;
+    }
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+
   body {
     @apply bg-background text-foreground antialiased;
     background-image:
-      radial-gradient(ellipse 80% 50% at 10% -10%, hsl(173 80% 32% / 0.08), transparent),
-      radial-gradient(ellipse 60% 40% at 100% 0%, hsl(190 70% 40% / 0.06), transparent);
+      radial-gradient(ellipse 90% 55% at 8% -15%, hsl(173 72% 32% / 0.07), transparent),
+      radial-gradient(ellipse 70% 45% at 100% 0%, hsl(190 55% 42% / 0.05), transparent);
     min-height: 100dvh;
   }
 
   .dark body {
     background-image:
-      radial-gradient(ellipse 80% 50% at 10% -10%, hsl(173 70% 42% / 0.12), transparent),
-      radial-gradient(ellipse 60% 40% at 100% 0%, hsl(190 60% 40% / 0.08), transparent);
+      radial-gradient(ellipse 90% 55% at 8% -15%, hsl(173 58% 45% / 0.1), transparent),
+      radial-gradient(ellipse 70% 45% at 100% 0%, hsl(190 45% 40% / 0.06), transparent);
+  }
+
+  :focus-visible {
+    @apply outline-none ring-2 ring-ring ring-offset-2 ring-offset-background;
+  }
+}
+
+@layer components {
+  .mf-surface {
+    @apply rounded-2xl border bg-card text-card-foreground;
+    box-shadow: var(--shadow-soft);
+  }
+
+  .mf-surface-lift {
+    @apply rounded-2xl border bg-card text-card-foreground;
+    box-shadow: var(--shadow-lift);
+  }
+
+  .mf-value {
+    @apply font-semibold tracking-tight tabular-nums;
+  }
+
+  .mf-touch {
+    @apply min-h-11 min-w-11;
   }
 }
 
 @layer utilities {
   .safe-bottom {
     padding-bottom: max(0.75rem, env(safe-area-inset-bottom));
+  }
+
+  .safe-top {
+    padding-top: max(0px, env(safe-area-inset-top));
+  }
+
+  .pb-nav {
+    padding-bottom: calc(4.5rem + env(safe-area-inset-bottom, 0px));
   }
 }
