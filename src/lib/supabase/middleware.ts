@@ -44,6 +44,8 @@ export async function updateSession(request: NextRequest) {
     pathname.startsWith("/login") || pathname.startsWith("/register");
   const isPublic =
     isAuthPage ||
+    pathname === "/privacy" ||
+    pathname === "/terms" ||
     pathname === "/offline" ||
     pathname.startsWith("/_next") ||
     pathname.startsWith("/icons") ||

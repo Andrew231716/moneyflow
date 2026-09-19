@@ -16,12 +16,17 @@ export function LoginForm({ mode }: { mode: "login" | "register" }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [fullName, setFullName] = useState("");
+  const [acceptedTerms, setAcceptedTerms] = useState(false);
   const [loading, setLoading] = useState(false);
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!hasSupabaseEnv()) {
       toast.error("Configura .env.local con le chiavi Supabase");
+      return;
+    }
+    if (mode === "register" && !acceptedTerms) {
+      toast.error("Accetta l’informativa privacy e i termini per registrarti");
       return;
     }
     setLoading(true);
@@ -106,7 +111,33 @@ export function LoginForm({ mode }: { mode: "login" | "register" }) {
               className="min-h-touch"
             />
           </div>
-          <Button type="submit" className="w-full min-h-touch" disabled={loading}>
+          {mode === "register" && (
+            <label className="flex items-start gap-2 text-sm text-muted-foreground">
+              <input
+                type="checkbox"
+                className="mt-1 size-4 shrink-0 accent-primary"
+                checked={acceptedTerms}
+                onChange={(e) => setAcceptedTerms(e.target.checked)}
+                required
+              />
+              <span>
+                Dichiaro di aver letto l’{" "}
+                <Link href="/privacy" className="text-primary underline hover:no-underline">
+                  informativa privacy
+                </Link>{" "}
+                e i{" "}
+                <Link href="/terms" className="text-primary underline hover:no-underline">
+                  termini di utilizzo
+                </Link>
+                .
+              </span>
+            </label>
+          )}
+          <Button
+            type="submit"
+            className="w-full min-h-touch"
+            disabled={loading || (mode === "register" && !acceptedTerms)}
+          >
             {loading
               ? "Attendere…"
               : mode === "login"
@@ -131,6 +162,10 @@ export function LoginForm({ mode }: { mode: "login" | "register" }) {
             </>
           )}
         </p>
+        <nav aria-label="Informazioni legali" className="mt-4 flex justify-center gap-4 text-xs text-muted-foreground">
+          <Link href="/privacy" className="hover:underline">Privacy</Link>
+          <Link href="/terms" className="hover:underline">Termini di utilizzo</Link>
+        </nav>
       </div>
     </div>
   );
