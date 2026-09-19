@@ -46,7 +46,9 @@ export async function GET(request: NextRequest) {
     }
 
     const reason =
-      status === "rejected"
+      status === "active" && !synced
+        ? "error"
+        : status === "rejected"
         ? "rejected"
         : status === "expired"
           ? "expired"
@@ -62,7 +64,7 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     if (error instanceof OpenBankingHttpError && error.status === 401) {
       return NextResponse.redirect(
-        new URL("/login?next=/accounts/connect-bank", appOrigin)
+        new URL(`/login?redirect=${encodeURIComponent(request.nextUrl.pathname + request.nextUrl.search)}`, appOrigin)
       );
     }
     // Soft-fail to connect page with generic Italian message

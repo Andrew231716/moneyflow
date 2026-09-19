@@ -86,10 +86,10 @@ export function BankConnectionsPanel() {
         body: JSON.stringify({ connection_id: connectionId }),
       });
       const data = await res.json();
-      if (!res.ok) {
-        setError(data.error ?? "Sincronizzazione non riuscita.");
-      }
       await refresh();
+      if (!res.ok || data.ok === false || data.errors?.length) {
+        setError(data.error ?? data.errors?.[0] ?? "Sincronizzazione non riuscita.");
+      }
     } catch {
       setError("Sincronizzazione non riuscita.");
     } finally {
@@ -110,10 +110,10 @@ export function BankConnectionsPanel() {
         body: JSON.stringify({ connection_id: connectionId }),
       });
       const data = await res.json();
+      await refresh();
       if (!res.ok) {
         setError(data.error ?? "Disconnessione non riuscita.");
       }
-      await refresh();
     } catch {
       setError("Disconnessione non riuscita.");
     } finally {

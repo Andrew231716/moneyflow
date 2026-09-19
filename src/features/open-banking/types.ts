@@ -47,6 +47,14 @@ export interface ProviderConnection {
   rawStatus?: string | null;
 }
 
+/** End-user agreement / consent metadata from the AIS provider when available. */
+export interface ProviderAgreement {
+  id: string;
+  acceptedAt: string | null;
+  accessValidForDays: number | null;
+  createdAt: string | null;
+}
+
 export interface ProviderAccount {
   id: string;
   iban?: string | null;

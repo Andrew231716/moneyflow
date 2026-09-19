@@ -1,5 +1,6 @@
 import { createServerClient, type CookieOptions } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
+import { safeRedirect } from "@/features/auth/safe-redirect";
 
 type CookieToSet = {
   name: string;
@@ -52,17 +53,26 @@ export async function updateSession(request: NextRequest) {
     pathname.startsWith("/api/open-banking/callback");
 
   if (!user && !isPublic) {
+    if (pathname.startsWith("/api/")) {
+      const response = NextResponse.json({ error: "Devi accedere per usare Open Banking." }, { status: 401 });
+      supabaseResponse.cookies.getAll().forEach(c => response.cookies.set(c));
+      return response;
+    }
     const redirectUrl = request.nextUrl.clone();
     redirectUrl.pathname = "/login";
-    redirectUrl.searchParams.set("redirect", pathname);
-    return NextResponse.redirect(redirectUrl);
+    redirectUrl.search = "";
+    redirectUrl.searchParams.set("redirect", pathname + request.nextUrl.search);
+    const response = NextResponse.redirect(redirectUrl);
+    supabaseResponse.cookies.getAll().forEach(c => response.cookies.set(c));
+    return response;
   }
 
   if (user && isAuthPage) {
     const redirectUrl = request.nextUrl.clone();
-    redirectUrl.pathname = "/";
-    redirectUrl.search = "";
-    return NextResponse.redirect(redirectUrl);
+    const destination = safeRedirect(request.nextUrl.searchParams.get("redirect"));
+    const response = NextResponse.redirect(new URL(destination, redirectUrl.origin));
+    supabaseResponse.cookies.getAll().forEach(c => response.cookies.set(c));
+    return response;
   }
 
   return supabaseResponse;

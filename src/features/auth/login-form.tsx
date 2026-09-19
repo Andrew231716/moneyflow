@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
+import { safeRedirect } from "./safe-redirect";
 
 export function LoginForm({ mode }: { mode: "login" | "register" }) {
   const router = useRouter();
@@ -34,7 +35,7 @@ export function LoginForm({ mode }: { mode: "login" | "register" }) {
         });
         if (error) throw error;
         toast.success("Account creato. Controlla l'email se richiesto.");
-        router.push("/");
+        router.push(safeRedirect(new URLSearchParams(window.location.search).get("redirect")));
         router.refresh();
       } else {
         const { error } = await supabase.auth.signInWithPassword({
@@ -42,7 +43,7 @@ export function LoginForm({ mode }: { mode: "login" | "register" }) {
           password,
         });
         if (error) throw error;
-        router.push("/");
+        router.push(safeRedirect(new URLSearchParams(window.location.search).get("redirect")));
         router.refresh();
       }
     } catch (err) {

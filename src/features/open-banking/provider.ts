@@ -3,6 +3,7 @@ import type {
   GetTransactionsParams,
   Institution,
   ProviderAccount,
+  ProviderAgreement,
   ProviderBalance,
   ProviderConnection,
   ProviderTransaction,
@@ -28,6 +29,9 @@ export interface OpenBankingProvider {
   getBalances(accountId: string): Promise<ProviderBalance[]>;
 
   getTransactions(params: GetTransactionsParams): Promise<ProviderTransaction[]>;
+
+  /** Optional: read end-user agreement / consent window from provider. */
+  getAgreement?(agreementId: string): Promise<ProviderAgreement | null>;
 
   /** Optional: revoke / delete connection at provider. */
   deleteConnection?(connectionId: string): Promise<void>;

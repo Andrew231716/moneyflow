@@ -4,6 +4,7 @@ import type {
   GetTransactionsParams,
   Institution,
   ProviderAccount,
+  ProviderAgreement,
   ProviderBalance,
   ProviderConnection,
   ProviderTransaction,
@@ -72,6 +73,25 @@ function friendlyStatusMessage(status: number): string {
   return "Errore nella comunicazione con il provider bancario.";
 }
 
+/** Prefer a clearable timeout over AbortSignal.timeout so completed requests do not leave live timers (hangs vitest / idle Node). */
+function createRequestTimeout(existing: AbortSignal | null | undefined, ms = 15_000): {
+  signal: AbortSignal;
+  clear: () => void;
+} {
+  if (existing) {
+    return { signal: existing, clear: () => undefined };
+  }
+  const controller = new AbortController();
+  const timer = setTimeout(() => {
+    controller.abort(Object.assign(new Error("Timeout"), { name: "TimeoutError" }));
+  }, ms);
+  timer.unref?.();
+  return {
+    signal: controller.signal,
+    clear: () => clearTimeout(timer),
+  };
+}
+
 async function gcFetch<T>(
   path: string,
   init: RequestInit & { skipAuth?: boolean } = {}
@@ -87,15 +107,40 @@ async function gcFetch<T>(
     headers.set("Authorization", `Bearer ${token}`);
   }
 
-  const res = await fetch(`${API_BASE}${path}`, { ...rest, headers });
-  if (!res.ok) {
-    // Never log tokens / secrets / full bank payloads
-    throw new GoCardlessApiError(friendlyStatusMessage(res.status), res.status);
+  const timeout = createRequestTimeout(rest.signal);
+  try {
+    const res = await fetch(`${API_BASE}${path}`, {
+      ...rest,
+      headers,
+      cache: "no-store",
+      signal: timeout.signal,
+    });
+    if (!res.ok) {
+      // Never log tokens / secrets / full bank payloads
+      throw new GoCardlessApiError(friendlyStatusMessage(res.status), res.status);
+    }
+    if (res.status === 204) {
+      return undefined as T;
+    }
+    return (await parseJsonSafe(res)) as T;
+  } catch (err) {
+    if (
+      !rest.signal?.aborted &&
+      timeout.signal.aborted &&
+      err &&
+      typeof err === "object" &&
+      "name" in err &&
+      ((err as { name: string }).name === "AbortError" ||
+        (err as { name: string }).name === "TimeoutError")
+    ) {
+      throw Object.assign(new Error("Timeout del provider bancario. Riprova più tardi."), {
+        name: "TimeoutError",
+      });
+    }
+    throw err;
+  } finally {
+    timeout.clear();
   }
-  if (res.status === 204) {
-    return undefined as T;
-  }
-  return (await parseJsonSafe(res)) as T;
 }
 
 interface TokenResponse {
@@ -183,6 +228,13 @@ interface GcRequisition {
   accounts?: string[];
   reference?: string;
   agreement?: string;
+}
+
+interface GcAgreement {
+  id: string;
+  created?: string;
+  accepted?: string | null;
+  access_valid_for_days?: number | string | null;
 }
 
 interface GcAccount {
@@ -334,6 +386,24 @@ export class GoCardlessProvider implements OpenBankingProvider {
     return mapConnection(data);
   }
 
+  async getAgreement(agreementId: string): Promise<ProviderAgreement | null> {
+    if (!agreementId) return null;
+    const data = await gcFetch<GcAgreement>(
+      `/agreements/enduser/${encodeURIComponent(agreementId)}/`
+    );
+    const daysRaw = data.access_valid_for_days;
+    const days =
+      daysRaw == null || daysRaw === ""
+        ? null
+        : Number(daysRaw);
+    return {
+      id: data.id,
+      acceptedAt: data.accepted || null,
+      accessValidForDays: Number.isFinite(days) ? days : null,
+      createdAt: data.created ?? null,
+    };
+  }
+
   async getAccounts(connectionId: string): Promise<ProviderAccount[]> {
     const connection = await this.getConnection(connectionId);
     const accounts: ProviderAccount[] = [];
@@ -385,8 +455,9 @@ export class GoCardlessProvider implements OpenBankingProvider {
     const path = `/accounts/${encodeURIComponent(params.accountId)}/transactions/${qs ? `?${qs}` : ""}`;
     const data = await gcFetch<GcTransactionsResponse>(path);
     const booked = data.transactions?.booked ?? [];
-    const pending = data.transactions?.pending ?? [];
-    return [...booked, ...pending].map(mapTx);
+    // Pending transactions can change identity and amount before booking.
+    // Persist only booked entries to avoid counting the same payment twice.
+    return booked.map(mapTx);
   }
 
   async deleteConnection(connectionId: string): Promise<void> {

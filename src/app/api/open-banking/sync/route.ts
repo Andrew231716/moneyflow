@@ -31,7 +31,7 @@ export async function POST(request: NextRequest) {
     });
 
     return NextResponse.json({
-      ok: true,
+      ok: result.errors.length === 0,
       imported: result.imported,
       skipped: result.skipped,
       updated: result.updated,

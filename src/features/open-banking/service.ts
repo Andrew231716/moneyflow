@@ -1,5 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { maskIban, mapRequisitionStatus } from "./auth";
+import { maskIban, mapRequisitionStatus, OpenBankingHttpError } from "./auth";
 import { buildDedupIndexes, decideDedup } from "./deduplication";
 import { getOpenBankingProvider } from "./factory";
 import { detectInternalTransfers } from "./internal-transfer-detector";
@@ -13,17 +13,28 @@ import type {
   SyncResult,
 } from "./types";
 import { prioritizeInstitutions } from "./institutions";
+import { OpenBankingConfigError } from "./gocardless-provider";
 
 const DEFAULT_PROVIDER: OpenBankingProviderId = "gocardless";
 
 function redirectUrl(): string {
   const url = process.env.OPEN_BANKING_REDIRECT_URL;
   if (!url) {
-    throw new Error(
+    throw new OpenBankingConfigError(
       "OPEN_BANKING_REDIRECT_URL non configurato (es. http://localhost:3000/api/open-banking/callback)."
     );
   }
-  return url;
+  let parsed: URL;
+  try { parsed = new URL(url); } catch {
+    throw new OpenBankingConfigError("OPEN_BANKING_REDIRECT_URL non valido.");
+  }
+  if (parsed.pathname !== "/api/open-banking/callback" || parsed.search || parsed.hash ||
+      parsed.username || parsed.password ||
+      (parsed.protocol !== "https:" && !(parsed.protocol === "http:" && parsed.hostname === "localhost")) ||
+      (process.env.VERCEL_ENV === "production" && parsed.protocol !== "https:")) {
+    throw new OpenBankingConfigError("OPEN_BANKING_REDIRECT_URL deve indicare il callback HTTPS dell'app.");
+  }
+  return parsed.toString();
 }
 
 export async function listInstitutions(options: {
@@ -47,7 +58,7 @@ export async function startBankConnection(options: {
 }): Promise<{ connectionId: string; link: string }> {
   const providerId = options.providerId ?? DEFAULT_PROVIDER;
   const provider = getOpenBankingProvider(providerId);
-  const reference = `mf_${options.userId.replace(/-/g, "").slice(0, 12)}_${Date.now()}`;
+  const reference = `mf_${crypto.randomUUID()}`;
 
   const created = await provider.createConnection({
     institutionId: options.institutionId,
@@ -96,8 +107,8 @@ export async function handleConnectionCallback(options: {
     providerConnectionId: options.requisitionId ?? options.ref,
   });
 
-  if (!connection) {
-    throw new Error("Connessione bancaria non trovata.");
+  if (!connection || connection.status === "disconnected") {
+    throw new OpenBankingHttpError("Connessione bancaria non trovata.", 404);
   }
 
   // Ownership already enforced by user_id filter
@@ -116,7 +127,7 @@ export async function handleConnectionCallback(options: {
               ? "Errore durante l'autorizzazione bancaria."
               : null;
 
-    const { data: updated } = await options.supabase
+    const { data: updated, error: updateError } = await options.supabase
       .from("bank_connections")
       .update({
         status,
@@ -127,8 +138,12 @@ export async function handleConnectionCallback(options: {
       .select("*")
       .single();
 
+    if (updateError || !updated) {
+      throw new Error("Impossibile aggiornare lo stato della connessione bancaria.");
+    }
+
     return {
-      connection: (updated ?? connection) as BankConnectionRow,
+      connection: updated as BankConnectionRow,
       synced: false,
     };
   }
@@ -147,34 +162,60 @@ export async function handleConnectionCallback(options: {
     });
   }
 
-  // Consent typically ~90 days for continuous access
-  const consentExpires = new Date();
-  consentExpires.setDate(consentExpires.getDate() + 90);
+  // Prefer real provider agreement expiry; never invent a 90-day extension.
+  // Replaying a callback must not extend an already-stored consent window.
+  const consentExpires =
+    connection.consent_expires_at ??
+    (await resolveConsentExpiresAt(provider, remote));
 
-  const { data: activated } = await options.supabase
+  const { data: activated, error: activateError } = await options.supabase
     .from("bank_connections")
     .update({
       status: "active",
       error_message: null,
-      consent_expires_at: consentExpires.toISOString(),
+      consent_expires_at: consentExpires,
     })
     .eq("id", connection.id)
     .eq("user_id", options.userId)
     .select("*")
     .single();
 
-  connection = (activated ?? {
-    ...connection,
-    status: "active",
-  }) as BankConnectionRow;
+  if (activateError || !activated) {
+    throw new Error("Impossibile attivare la connessione bancaria.");
+  }
 
-  await syncConnection({
+  connection = activated as BankConnectionRow;
+
+  const result = await syncConnection({
     supabase: options.supabase,
     userId: options.userId,
     connectionId: connection.id,
   });
 
-  return { connection, synced: true };
+  return { connection, synced: result.errors.length === 0 };
+}
+
+/** Derive consent_expires_at from provider agreement data only. */
+export async function resolveConsentExpiresAt(
+  provider: { getAgreement?(agreementId: string): Promise<{ acceptedAt: string | null; accessValidForDays: number | null; createdAt: string | null } | null> },
+  remote: { agreement?: string | null }
+): Promise<string | null> {
+  const agreementId = remote.agreement ?? null;
+  if (!agreementId || !provider.getAgreement) return null;
+  try {
+    const agreement = await provider.getAgreement(agreementId);
+    if (!agreement?.accessValidForDays || agreement.accessValidForDays <= 0) {
+      return null;
+    }
+    const startIso = agreement.acceptedAt || agreement.createdAt;
+    if (!startIso) return null;
+    const start = new Date(startIso);
+    if (Number.isNaN(start.getTime())) return null;
+    start.setUTCDate(start.getUTCDate() + agreement.accessValidForDays);
+    return start.toISOString();
+  } catch {
+    return null;
+  }
 }
 
 async function findConnection(
@@ -183,36 +224,36 @@ async function findConnection(
   keys: { id?: string | null; providerConnectionId?: string | null }
 ): Promise<BankConnectionRow | null> {
   if (keys.id) {
-    const { data } = await supabase
+    const { data, error } = await supabase
+      .from("bank_connections").select("*")
+      .eq("user_id", userId).eq("metadata->>reference", keys.id).maybeSingle();
+    if (error) throw new Error("Impossibile verificare la connessione bancaria.");
+    if (data) return data as BankConnectionRow;
+  }
+  if (keys.id && /^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i.test(keys.id)) {
+    const { data, error } = await supabase
       .from("bank_connections")
       .select("*")
       .eq("user_id", userId)
       .eq("id", keys.id)
       .maybeSingle();
+    if (error) throw new Error("Impossibile verificare la connessione bancaria.");
     if (data) return data as BankConnectionRow;
   }
 
   if (keys.providerConnectionId) {
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from("bank_connections")
       .select("*")
       .eq("user_id", userId)
       .eq("provider_connection_id", keys.providerConnectionId)
       .maybeSingle();
+    if (error) throw new Error("Impossibile verificare la connessione bancaria.");
     if (data) return data as BankConnectionRow;
   }
 
-  // Fallback: latest pending for user (GoCardless may only bounce redirect)
-  const { data } = await supabase
-    .from("bank_connections")
-    .select("*")
-    .eq("user_id", userId)
-    .eq("status", "pending")
-    .order("created_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-
-  return (data as BankConnectionRow) ?? null;
+  // Missing or unknown callback identifiers must not select another connection.
+  return null;
 }
 
 async function upsertBankAccountAndMoneyFlowAccount(options: {
@@ -298,31 +339,37 @@ export async function syncConnection(options: {
 
   const conn = connection as BankConnectionRow;
 
-  if (conn.status === "disconnected") {
-    throw new Error("Questa connessione è stata disconnessa.");
+  if (conn.status !== "active") {
+    throw new OpenBankingHttpError("La connessione non è attiva. Completa o rinnova il collegamento.", 409);
   }
 
   if (
     conn.consent_expires_at &&
     new Date(conn.consent_expires_at).getTime() < Date.now()
   ) {
-    await supabase
+    const { error: expireError } = await supabase
       .from("bank_connections")
       .update({ status: "expired" })
       .eq("id", conn.id)
       .eq("user_id", userId);
+    if (expireError) {
+      throw new Error("Impossibile aggiornare il consenso scaduto.");
+    }
     throw new Error(
       `Il consenso Open Banking di ${conn.institution_name} è scaduto. Ricollega il conto.`
     );
   }
 
   const provider = getOpenBankingProvider(conn.provider);
-  const { data: bankAccounts } = await supabase
+  const { data: bankAccounts, error: bankAccountsError } = await supabase
     .from("bank_accounts")
     .select("*")
     .eq("connection_id", conn.id)
     .eq("user_id", userId);
 
+  if (bankAccountsError || !bankAccounts?.length) {
+    throw new Error("Nessun conto bancario disponibile per la sincronizzazione.");
+  }
   const result: SyncResult = {
     connectionId: conn.id,
     imported: 0,
@@ -341,12 +388,15 @@ export async function syncConnection(options: {
         balances.find((b) => /interim|expected|closing/i.test(b.type ?? "")) ??
         balances[0];
       if (preferred && ba.account_id) {
-        await supabase
+        const { error: balanceError } = await supabase
           .from("accounts")
           .update({ balance: preferred.amount })
           .eq("id", ba.account_id)
           .eq("user_id", userId);
-        await supabase
+        if (balanceError) {
+          result.errors.push("Impossibile aggiornare il saldo del conto.");
+        }
+        const { error: bankBalanceError } = await supabase
           .from("bank_accounts")
           .update({
             balance: preferred.amount,
@@ -354,6 +404,9 @@ export async function syncConnection(options: {
           })
           .eq("id", ba.id)
           .eq("user_id", userId);
+        if (bankBalanceError) {
+          result.errors.push("Impossibile aggiornare il saldo bancario.");
+        }
       }
 
       const dateFrom = new Date();
@@ -368,13 +421,15 @@ export async function syncConnection(options: {
         accountKey: ba.provider_account_id,
       });
 
-      const { data: existingRows } = await supabase
+      const { data: existingRows, error: existingError } = await supabase
         .from("transactions")
         .select(
           "id, provider, provider_transaction_id, fingerprint, category_id, description, merchant, notes, manual_override_fields"
         )
         .eq("user_id", userId)
         .eq("bank_account_id", ba.id);
+
+      if (existingError) throw new Error("Impossibile verificare i movimenti esistenti.");
 
       const { byProviderId, byFingerprint } = buildDedupIndexes(
         (existingRows ?? []) as Parameters<typeof buildDedupIndexes>[0]
@@ -389,7 +444,7 @@ export async function syncConnection(options: {
           continue;
         }
         if (decision.action === "update") {
-          await supabase
+          const { error: updateError } = await supabase
             .from("transactions")
             .update({
               ...decision.fields,
@@ -397,6 +452,10 @@ export async function syncConnection(options: {
             })
             .eq("id", decision.existingId)
             .eq("user_id", userId);
+          if (updateError) {
+            result.errors.push("Impossibile aggiornare un movimento bancario.");
+            continue;
+          }
           result.updated += 1;
           continue;
         }
@@ -428,8 +487,8 @@ export async function syncConnection(options: {
           .single();
 
         if (insertError) {
-          // Unique violation → treat as skip
-          result.skipped += 1;
+          if (insertError.code === "23505") result.skipped += 1;
+          else result.errors.push("Impossibile salvare un movimento bancario.");
           continue;
         }
         if (inserted) {
@@ -491,20 +550,46 @@ export async function syncConnection(options: {
       }
       allSuggestions.push(...suggestions);
       void newlyInsertedIds;
-    } catch {
-      result.errors.push("Errore sincronizzando un conto. Riprova più tardi.");
+    } catch (err) {
+      if (
+        err &&
+        typeof err === "object" &&
+        "name" in err &&
+        ((err as { name: string }).name === "TimeoutError" ||
+          (err as { name: string }).name === "AbortError")
+      ) {
+        result.errors.push("Timeout del provider bancario. Riprova più tardi.");
+      } else if (
+        err &&
+        typeof err === "object" &&
+        "name" in err &&
+        (err as { name: string }).name === "GoCardlessApiError"
+      ) {
+        result.errors.push(
+          (err as Error).message ||
+            "Il provider bancario non è disponibile al momento."
+        );
+      } else if (err instanceof Error && err.message) {
+        result.errors.push(err.message);
+      } else {
+        result.errors.push("Errore sincronizzando un conto. Riprova più tardi.");
+      }
     }
   }
 
-  await supabase
+  const { error: syncMetaError } = await supabase
     .from("bank_connections")
     .update({
-      last_synced_at: new Date().toISOString(),
-      status: conn.status === "pending" ? "active" : conn.status,
+      last_synced_at: result.errors.length ? conn.last_synced_at : new Date().toISOString(),
+      status: conn.status,
       error_message: result.errors.length ? result.errors[0] : null,
     })
     .eq("id", conn.id)
     .eq("user_id", userId);
+
+  if (syncMetaError) {
+    result.errors.push("Impossibile salvare lo stato di sincronizzazione.");
+  }
 
   result.transferSuggestions = allSuggestions;
   return result;
@@ -576,11 +661,15 @@ export async function disconnectConnection(options: {
     // Local disconnect still proceeds
   }
 
-  await supabase
+  const { error: disconnectError } = await supabase
     .from("bank_connections")
     .update({ status: "disconnected", error_message: null })
     .eq("id", connectionId)
     .eq("user_id", userId);
+
+  if (disconnectError) {
+    throw new Error("Impossibile disconnettere la connessione bancaria.");
+  }
 }
 
 /**
