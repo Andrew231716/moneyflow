@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="MoneyFlow">
+  <defs>
+    <linearGradient id="bg" x1="64" y1="40" x2="448" y2="472" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#0d9488"/>
+      <stop offset="55%" stop-color="#0f766e"/>
+      <stop offset="100%" stop-color="#115e59"/>
+    </linearGradient>
+    <linearGradient id="flow" x1="96" y1="320" x2="400" y2="160" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#ecfdf5" stop-opacity="0.55"/>
+      <stop offset="45%" stop-color="#ffffff" stop-opacity="0.95"/>
+      <stop offset="100%" stop-color="#a7f3d0" stop-opacity="0.9"/>
+    </linearGradient>
+  </defs>
+
+  <!-- App tile -->
+  <rect x="32" y="32" width="448" height="448" rx="108" fill="url(#bg)"/>
+
+  <!-- Soft highlight -->
+  <path fill="#ffffff" fill-opacity="0.08" d="M140 64c90-18 220 8 280 72 8 9 6 22-4 28-72 42-168 28-244-8-48-23-80-52-90-74-4-10 2-16 58-18z"/>
+
+  <!-- Flow ribbons (stream of value) -->
+  <path fill="none" stroke="url(#flow)" stroke-width="28" stroke-linecap="round" stroke-linejoin="round"
+        d="M108 330c48-36 84-54 128-54s78 24 120 8c28-11 52-36 76-78"/>
+  <path fill="none" stroke="#ffffff" stroke-opacity="0.35" stroke-width="14" stroke-linecap="round"
+        d="M118 368c44-30 78-44 118-44s74 20 112 8c30-10 56-32 80-68"/>
+
+  <!-- Rising trend tip -->
+  <path fill="#ffffff" d="M372 168l52-4-18 48-14-18-46 40-18-20 46-40z"/>
+
+  <!-- Subtle currency cue (not crypto): soft euro arc -->
+  <g fill="none" stroke="#ecfdf5" stroke-opacity="0.55" stroke-width="16" stroke-linecap="round">
+    <path d="M168 214c-28 10-46 34-46 62s18 52 46 62"/>
+    <path d="M126 256h52"/>
+    <path d="M130 288h48"/>
+  </g>
+</svg>

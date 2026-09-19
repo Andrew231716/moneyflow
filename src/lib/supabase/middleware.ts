@@ -48,6 +48,7 @@ export async function updateSession(request: NextRequest) {
     pathname.startsWith("/icons") ||
     pathname === "/manifest.webmanifest" ||
     pathname === "/favicon.ico" ||
+    pathname === "/favicon.svg" ||
     pathname.startsWith("/api/open-banking/callback");
 
   if (!user && !isPublic) {

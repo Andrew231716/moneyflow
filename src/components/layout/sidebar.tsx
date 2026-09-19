@@ -2,8 +2,8 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Waves } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { MoneyFlowWordmark } from "@/components/brand/moneyflow-mark";
 import { sidebarNav } from "./nav-config";
 
 export function Sidebar() {
@@ -11,14 +11,8 @@ export function Sidebar() {
 
   return (
     <aside className="hidden md:flex md:w-60 lg:w-64 shrink-0 flex-col border-r border-border/80 bg-sidebar/90 backdrop-blur-md">
-      <div className="flex h-16 items-center gap-2.5 px-5 border-b border-border/80">
-        <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-soft">
-          <Waves className="h-5 w-5" aria-hidden />
-        </div>
-        <div>
-          <p className="font-semibold tracking-tight text-lg leading-none">MoneyFlow</p>
-          <p className="text-[11px] text-muted-foreground mt-0.5">Finanze personali</p>
-        </div>
+      <div className="flex h-16 items-center px-5 border-b border-border/80">
+        <MoneyFlowWordmark />
       </div>
       <nav className="flex-1 space-y-0.5 p-3 overflow-y-auto" aria-label="Navigazione principale">
         {sidebarNav.map((item) => {

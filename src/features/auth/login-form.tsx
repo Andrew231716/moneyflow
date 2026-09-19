@@ -3,8 +3,8 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Waves } from "lucide-react";
 import { createClient, hasSupabaseEnv } from "@/lib/supabase/client";
+import { MoneyFlowMark } from "@/components/brand/moneyflow-mark";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -56,9 +56,7 @@ export function LoginForm({ mode }: { mode: "login" | "register" }) {
     <div className="min-h-dvh flex items-center justify-center p-4">
       <div className="mf-surface-lift w-full max-w-md p-6 sm:p-8">
         <div className="text-center space-y-3 mb-6">
-          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-primary text-primary-foreground shadow-soft">
-            <Waves className="h-6 w-6" aria-hidden />
-          </div>
+          <MoneyFlowMark size="lg" className="mx-auto" />
           <div>
             <h1 className="text-2xl font-semibold tracking-tight">MoneyFlow</h1>
             <p className="text-sm text-muted-foreground mt-1">
