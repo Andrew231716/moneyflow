@@ -1,0 +1,82 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 160 20% 98%;
+    --foreground: 168 30% 10%;
+    --card: 0 0% 100%;
+    --card-foreground: 168 30% 10%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 168 30% 10%;
+    --primary: 173 80% 32%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 166 20% 94%;
+    --secondary-foreground: 168 30% 16%;
+    --muted: 160 15% 94%;
+    --muted-foreground: 168 10% 42%;
+    --accent: 173 40% 92%;
+    --accent-foreground: 173 80% 22%;
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 100%;
+    --success: 142 71% 35%;
+    --success-foreground: 0 0% 100%;
+    --warning: 38 92% 45%;
+    --warning-foreground: 0 0% 100%;
+    --border: 166 18% 88%;
+    --input: 166 18% 88%;
+    --ring: 173 80% 32%;
+    --radius: 0.75rem;
+  }
+
+  .dark {
+    --background: 170 25% 7%;
+    --foreground: 160 15% 96%;
+    --card: 170 22% 10%;
+    --card-foreground: 160 15% 96%;
+    --popover: 170 22% 10%;
+    --popover-foreground: 160 15% 96%;
+    --primary: 173 70% 42%;
+    --primary-foreground: 170 25% 7%;
+    --secondary: 170 18% 16%;
+    --secondary-foreground: 160 15% 92%;
+    --muted: 170 16% 14%;
+    --muted-foreground: 160 10% 62%;
+    --accent: 173 30% 18%;
+    --accent-foreground: 173 60% 70%;
+    --destructive: 0 62% 45%;
+    --destructive-foreground: 0 0% 100%;
+    --success: 142 60% 42%;
+    --success-foreground: 0 0% 100%;
+    --warning: 38 85% 50%;
+    --warning-foreground: 0 0% 10%;
+    --border: 170 16% 18%;
+    --input: 170 16% 18%;
+    --ring: 173 70% 42%;
+  }
+
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground antialiased;
+    background-image:
+      radial-gradient(ellipse 80% 50% at 10% -10%, hsl(173 80% 32% / 0.08), transparent),
+      radial-gradient(ellipse 60% 40% at 100% 0%, hsl(190 70% 40% / 0.06), transparent);
+    min-height: 100dvh;
+  }
+
+  .dark body {
+    background-image:
+      radial-gradient(ellipse 80% 50% at 10% -10%, hsl(173 70% 42% / 0.12), transparent),
+      radial-gradient(ellipse 60% 40% at 100% 0%, hsl(190 60% 40% / 0.08), transparent);
+  }
+}
+
+@layer utilities {
+  .safe-bottom {
+    padding-bottom: max(0.75rem, env(safe-area-inset-bottom));
+  }
+}
