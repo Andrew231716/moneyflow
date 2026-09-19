@@ -72,12 +72,64 @@ Vedi `.env.example`:
 | `GOCARDLESS_SECRET_ID` / `GOCARDLESS_SECRET_KEY` | Solo server, Open Banking |
 | `OPEN_BANKING_REDIRECT_URL` | Callback OAuth banca |
 
-## Deploy Vercel
+## Deploy su Vercel (Hobby / free)
 
-1. Push del repo
-2. Import su Vercel
-3. Imposta le env vars
-4. Deploy
+MoneyFlow è pensato per **Vercel Hobby**: Next.js App Router, middleware Supabase e API Open Banking (`/api/open-banking/*`) richiedono un host Node/serverless. **Non** usare `output: 'export'` / GitHub Pages per il full stack.
+
+### Opzione A — CLI (consigliata)
+
+```bash
+# 1. Login (una volta)
+npx vercel login
+
+# 2. Collega il progetto (directory corrente)
+npx vercel link
+
+# 3. Imposta le env (Production + Preview). Non committare .env.local.
+npx vercel env add NEXT_PUBLIC_SUPABASE_URL
+npx vercel env add NEXT_PUBLIC_SUPABASE_ANON_KEY
+npx vercel env add NEXT_PUBLIC_ENABLE_DEMO_SEED   # opzionale
+npx vercel env add GOCARDLESS_SECRET_ID           # se usi Open Banking
+npx vercel env add GOCARDLESS_SECRET_KEY
+# Dopo il primo deploy, aggiorna il callback con l’URL reale:
+npx vercel env add OPEN_BANKING_REDIRECT_URL
+# valore: https://<tuo-progetto>.vercel.app/api/open-banking/callback
+
+# 4. Deploy produzione
+npx vercel --prod
+```
+
+### Opzione B — Dashboard + GitHub
+
+1. Push del branch su GitHub.
+2. [vercel.com/new](https://vercel.com/new) → Import repository → framework **Next.js**.
+3. Aggiungi le env vars (tabella sotto) → Deploy.
+4. Piano **Hobby** (gratis): nessun feature a pagamento richiesto.
+
+### Env vars su Vercel
+
+| Variabile | Ambiente | Note |
+|-----------|----------|------|
+| `NEXT_PUBLIC_SUPABASE_URL` | Production, Preview | Obbligatoria |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Production, Preview | Obbligatoria (mai `service_role`) |
+| `NEXT_PUBLIC_ENABLE_DEMO_SEED` | opzionale | `true` / `false` |
+| `GOCARDLESS_SECRET_ID` | Production, Preview | Solo se Open Banking |
+| `GOCARDLESS_SECRET_KEY` | Production, Preview | Solo se Open Banking |
+| `OPEN_BANKING_REDIRECT_URL` | Production | `https://<deployment>/api/open-banking/callback` |
+
+Dopo il deploy, in **Supabase → Authentication → URL Configuration**:
+
+- **Site URL**: `https://<tuo-progetto>.vercel.app`
+- **Redirect URLs**: aggiungi `https://<tuo-progetto>.vercel.app/**` (e l’eventuale dominio custom)
+
+In **GoCardless** (se usato), imposta lo stesso callback usato in `OPEN_BANKING_REDIRECT_URL`.
+
+### Verifica
+
+```bash
+curl -I https://<tuo-progetto>.vercel.app
+# atteso: HTTP 200 (o redirect verso /login)
+```
 
 ## Struttura
 
