@@ -4,6 +4,7 @@ import {
   IncompleteTransactionsError,
   OpenBankingConfigError,
   OpenBankingProviderError,
+  RATE_LIMIT_PARTIAL_MESSAGE,
   friendlyProviderStatusMessage,
 } from "./errors";
 import type {
@@ -103,7 +104,21 @@ export async function createEnableBankingJwt(): Promise<string> {
 }
 
 function sleep(ms: number): Promise<void> {
+  // Skip pacing in unit tests so suites stay fast.
+  if (process.env.VITEST === "true" || process.env.NODE_ENV === "test") {
+    return Promise.resolve();
+  }
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/** Intesa / Enable Banking ASPSP limits need long pauses, not rapid retries. */
+const RATE_LIMIT_BACKOFF_MS = [5_000, 15_000, 45_000] as const;
+/** Pause between transaction pages to stay under ASPSP quotas. */
+const TX_PAGE_DELAY_MS = 2_500;
+
+function rateLimitBackoffMs(attempt: number): number {
+  const idx = Math.min(Math.max(attempt - 1, 0), RATE_LIMIT_BACKOFF_MS.length - 1);
+  return RATE_LIMIT_BACKOFF_MS[idx] + Math.floor(Math.random() * 500);
 }
 
 function isRateLimitError(err: unknown): boolean {
@@ -119,7 +134,7 @@ async function ebFetch<T>(
   init: RequestInit = {},
   options?: { maxRetries?: number; timeoutMs?: number }
 ): Promise<T> {
-  const maxRetries = options?.maxRetries ?? 4;
+  const maxRetries = options?.maxRetries ?? 3;
   const timeoutMs = options?.timeoutMs ?? 20_000;
   let attempt = 0;
 
@@ -156,7 +171,7 @@ async function ebFetch<T>(
         );
         if (isRateLimitError(error) && attempt < maxRetries) {
           attempt += 1;
-          await sleep(1_200 * 2 ** (attempt - 1) + Math.floor(Math.random() * 400));
+          await sleep(rateLimitBackoffMs(attempt));
           continue;
         }
         throw error;
@@ -179,7 +194,7 @@ async function ebFetch<T>(
       }
       if (isRateLimitError(err) && attempt < maxRetries) {
         attempt += 1;
-        await sleep(1_200 * 2 ** (attempt - 1) + Math.floor(Math.random() * 400));
+        await sleep(rateLimitBackoffMs(attempt));
         continue;
       }
       throw err;
@@ -488,7 +503,8 @@ export class EnableBankingProvider implements OpenBankingProvider {
         );
       }
 
-      if (pages > 1) await sleep(450);
+      // Pace pages aggressively — Intesa ASPSP_RATE_LIMIT_EXCEEDED is common.
+      if (pages > 1) await sleep(TX_PAGE_DELAY_MS);
 
       const pageQuery = new URLSearchParams(q);
       if (continuation) pageQuery.set("continuation_key", continuation);
@@ -498,14 +514,14 @@ export class EnableBankingProvider implements OpenBankingProvider {
         continuation_key?: string | null;
       };
       try {
-        data = await ebFetch(pagePath, {}, { timeoutMs: 25_000, maxRetries: 5 });
+        // 2 long backoffs (5s + 15s); prefer partial save over burning the window.
+        data = await ebFetch(pagePath, {}, { timeoutMs: 25_000, maxRetries: 2 });
       } catch (err) {
-        if (all.length > 0 && continuation) {
-          const reason = isRateLimitError(err)
-            ? "limite richieste della banca raggiunto"
-            : "il provider ha interrotto la paginazione";
+        if (all.length > 0 && (continuation || isRateLimitError(err))) {
           throw new IncompleteTransactionsError(
-            `Sincronizzazione movimenti incompleta: ${reason}. Riprova tra poco per i restanti.`,
+            isRateLimitError(err)
+              ? RATE_LIMIT_PARTIAL_MESSAGE
+              : "Sincronizzazione movimenti incompleta: il provider ha interrotto la paginazione. Riprova tra poco per i restanti.",
             all
           );
         }
@@ -527,6 +543,8 @@ export class EnableBankingProvider implements OpenBankingProvider {
     });
   }
 }
+
+export { RATE_LIMIT_PARTIAL_MESSAGE };
 
 export function createEnableBankingProvider(): OpenBankingProvider {
   return new EnableBankingProvider();

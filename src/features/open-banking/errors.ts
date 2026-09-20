@@ -17,6 +17,9 @@ export class OpenBankingProviderError extends Error {
 }
 
 /** Partial page fetch succeeded but continuation failed — carry txs already retrieved. */
+export const RATE_LIMIT_PARTIAL_MESSAGE =
+  "Riprova tra qualche minuto — i movimenti già scaricati sono al sicuro";
+
 export class IncompleteTransactionsError extends Error {
   constructor(
     message: string,
@@ -33,7 +36,7 @@ export function friendlyProviderStatusMessage(
 ): string {
   const code = (providerCode ?? "").toUpperCase();
   if (code === "ASPSP_RATE_LIMIT_EXCEEDED" || status === 429) {
-    return "Troppe richieste al provider bancario. Riprova tra poco.";
+    return "Troppe richieste al provider bancario. Riprova tra qualche minuto.";
   }
   if (code === "WRONG_REQUEST_PARAMETERS" || status === 422) {
     return "Parametri non validi per la banca. Riprova la sincronizzazione tra poco.";

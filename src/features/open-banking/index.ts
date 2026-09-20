@@ -20,11 +20,14 @@ export {
   startBankConnection,
   handleConnectionCallback,
   syncConnection,
+  syncAllActiveConnections,
+  looksLikeRateLimitMessage,
   listUserBankConnections,
   disconnectConnection,
   confirmInternalTransfer,
   resolveSyncDateFrom,
 } from "./service";
+export { RATE_LIMIT_PARTIAL_MESSAGE } from "./errors";
 export {
   normalizeInstitutionName,
   isIntesaSanpaolo,

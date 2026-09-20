@@ -761,15 +761,23 @@ describe("resolveSyncDateFrom", () => {
     expect(Math.abs(d.getTime() - expected.getTime())).toBeLessThan(2000);
   });
 
-  it("uses incremental window after a clean sync", () => {
+  it("uses 2-day overlap after a prior sync", () => {
     const anchor = "2026-09-10T12:00:00.000Z";
     const d = resolveSyncDateFrom(anchor, anchor);
     const expected = new Date(anchor);
-    expected.setDate(expected.getDate() - 14);
+    expected.setDate(expected.getDate() - 2);
     expect(d.toISOString().slice(0, 10)).toBe(expected.toISOString().slice(0, 10));
   });
 
-  it("forces full window when previous error remains", () => {
+  it("prefers last transaction date over stale sync timestamps", () => {
+    const d = resolveSyncDateFrom("2026-08-01T00:00:00.000Z", null, {
+      lastTransactionDate: "2026-09-15",
+      overlapDays: 2,
+    });
+    expect(d.toISOString().slice(0, 10)).toBe("2026-09-13");
+  });
+
+  it("forces full window only when explicitly requested", () => {
     const anchor = "2026-09-10T12:00:00.000Z";
     const d = resolveSyncDateFrom(anchor, anchor, { forceFullWindow: true });
     const expected = new Date();

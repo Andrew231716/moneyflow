@@ -16,9 +16,41 @@ import { prioritizeInstitutions } from "./institutions";
 import {
   IncompleteTransactionsError,
   OpenBankingConfigError,
+  OpenBankingProviderError,
+  RATE_LIMIT_PARTIAL_MESSAGE,
 } from "./errors";
 import { classifyDescription } from "@/lib/finance/classification";
 import type { Category, ClassificationRule } from "@/types/database";
+
+const ACCOUNT_SYNC_PAUSE_MS = 2_500;
+const BALANCE_TO_TX_PAUSE_MS = 800;
+/** Default overlap so late-posted bank rows are not missed. */
+const INCREMENTAL_OVERLAP_DAYS = 2;
+
+function sleep(ms: number): Promise<void> {
+  if (process.env.VITEST === "true" || process.env.NODE_ENV === "test") {
+    return Promise.resolve();
+  }
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+export function looksLikeRateLimitMessage(msg: string | null | undefined): boolean {
+  if (!msg) return false;
+  return /troppe richieste|rate.?limit|già scaricati sono al sicuro|riprova tra qualche/i.test(
+    msg
+  );
+}
+
+function isProviderRateLimit(err: unknown): boolean {
+  if (err instanceof OpenBankingProviderError) {
+    return (
+      err.status === 429 ||
+      (err.providerCode ?? "").toUpperCase() === "ASPSP_RATE_LIMIT_EXCEEDED" ||
+      looksLikeRateLimitMessage(err.message)
+    );
+  }
+  return err instanceof Error && looksLikeRateLimitMessage(err.message);
+}
 
 function redirectUrl(): string {
   const url = process.env.OPEN_BANKING_REDIRECT_URL;
@@ -469,6 +501,10 @@ export async function syncConnection(options: {
   supabase: SupabaseClient;
   userId: string;
   connectionId: string;
+  /** 90-day window — first connect or explicit "Sincronizza tutto". */
+  fullSync?: boolean;
+  /** Skip balance calls to conserve ASPSP quota (cron / rate-limit recovery). */
+  skipBalances?: boolean;
 }): Promise<SyncResult> {
   const { supabase, userId, connectionId } = options;
 
@@ -533,40 +569,74 @@ export async function syncConnection(options: {
     updated: 0,
     transferSuggestions: [],
     errors: [],
+    rateLimited: false,
   };
 
   const allSuggestions: InternalTransferSuggestion[] = [];
+  const accounts = bankAccounts as BankAccountRow[];
+  const skipBalances =
+    Boolean(options.skipBalances) || looksLikeRateLimitMessage(conn.error_message);
 
-  for (const ba of (bankAccounts ?? []) as BankAccountRow[]) {
+  for (let i = 0; i < accounts.length; i++) {
+    const ba = accounts[i];
+    if (result.rateLimited) {
+      result.errors.push(RATE_LIMIT_PARTIAL_MESSAGE);
+      break;
+    }
+    if (i > 0) await sleep(ACCOUNT_SYNC_PAUSE_MS);
+
     try {
-      const balances = await provider.getBalances(ba.provider_account_id);
-      const preferred =
-        balances.find((b) => /interim|expected|closing/i.test(b.type ?? "")) ??
-        balances[0];
-      if (preferred && ba.account_id) {
-        const { error: balanceError } = await supabase
-          .from("accounts")
-          .update({ balance: preferred.amount })
-          .eq("id", ba.account_id)
-          .eq("user_id", userId);
-        if (balanceError) {
-          result.errors.push("Impossibile aggiornare il saldo del conto.");
+      if (!skipBalances) {
+        try {
+          const balances = await provider.getBalances(ba.provider_account_id);
+          const preferred =
+            balances.find((b) => /interim|expected|closing/i.test(b.type ?? "")) ??
+            balances[0];
+          if (preferred && ba.account_id) {
+            const { error: balanceError } = await supabase
+              .from("accounts")
+              .update({ balance: preferred.amount })
+              .eq("id", ba.account_id)
+              .eq("user_id", userId);
+            if (balanceError) {
+              result.errors.push("Impossibile aggiornare il saldo del conto.");
+            }
+            const { error: bankBalanceError } = await supabase
+              .from("bank_accounts")
+              .update({
+                balance: preferred.amount,
+                last_synced_at: new Date().toISOString(),
+              })
+              .eq("id", ba.id)
+              .eq("user_id", userId);
+            if (bankBalanceError) {
+              result.errors.push("Impossibile aggiornare il saldo bancario.");
+            }
+          }
+        } catch (err) {
+          if (isProviderRateLimit(err)) {
+            result.rateLimited = true;
+            result.errors.push(RATE_LIMIT_PARTIAL_MESSAGE);
+            break;
+          }
+          throw err;
         }
-        const { error: bankBalanceError } = await supabase
-          .from("bank_accounts")
-          .update({
-            balance: preferred.amount,
-            last_synced_at: new Date().toISOString(),
-          })
-          .eq("id", ba.id)
-          .eq("user_id", userId);
-        if (bankBalanceError) {
-          result.errors.push("Impossibile aggiornare il saldo bancario.");
-        }
+        await sleep(BALANCE_TO_TX_PAUSE_MS);
       }
 
+      const { data: lastTxRow } = await supabase
+        .from("transactions")
+        .select("date")
+        .eq("user_id", userId)
+        .eq("bank_account_id", ba.id)
+        .order("date", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
       const dateFrom = resolveSyncDateFrom(ba.last_synced_at, conn.last_synced_at, {
-        forceFullWindow: Boolean(conn.error_message),
+        forceFullWindow: Boolean(options.fullSync),
+        lastTransactionDate: (lastTxRow?.date as string | null | undefined) ?? null,
+        overlapDays: INCREMENTAL_OVERLAP_DAYS,
       });
       const dateFromIso = dateFrom.toISOString().slice(0, 10);
 
@@ -586,7 +656,16 @@ export async function syncConnection(options: {
         ) {
           const incomplete = err as IncompleteTransactionsError;
           txs = incomplete.transactions;
-          result.errors.push(incomplete.message);
+          if (looksLikeRateLimitMessage(incomplete.message)) {
+            result.rateLimited = true;
+            result.errors.push(RATE_LIMIT_PARTIAL_MESSAGE);
+          } else {
+            result.errors.push(incomplete.message);
+          }
+        } else if (isProviderRateLimit(err)) {
+          result.rateLimited = true;
+          result.errors.push(RATE_LIMIT_PARTIAL_MESSAGE);
+          break;
         } else {
           throw err;
         }
@@ -679,7 +758,6 @@ export async function syncConnection(options: {
         if (inserted) {
           newlyInsertedIds.push(inserted.id);
           result.imported += 1;
-          // Keep indexes fresh within the loop
           const stub = {
             id: inserted.id,
             provider: n.provider,
@@ -698,7 +776,6 @@ export async function syncConnection(options: {
         }
       }
 
-      // Internal transfer suggestions across user's recent bank txs
       const { data: recent } = await supabase
         .from("transactions")
         .select("id, amount, date, type, account_id")
@@ -721,7 +798,6 @@ export async function syncConnection(options: {
       );
 
       for (const s of suggestions) {
-        // Store as suggestion only — do not flip type to transfer
         await supabase
           .from("transactions")
           .update({ possible_transfer_match_id: s.matchedTransactionId })
@@ -735,7 +811,20 @@ export async function syncConnection(options: {
       }
       allSuggestions.push(...suggestions);
       void newlyInsertedIds;
+
+      if (result.imported > 0 || result.updated > 0 || !result.rateLimited) {
+        await supabase
+          .from("bank_accounts")
+          .update({ last_synced_at: new Date().toISOString() })
+          .eq("id", ba.id)
+          .eq("user_id", userId);
+      }
     } catch (err) {
+      if (isProviderRateLimit(err)) {
+        result.rateLimited = true;
+        result.errors.push(RATE_LIMIT_PARTIAL_MESSAGE);
+        break;
+      }
       if (
         err &&
         typeof err === "object" &&
@@ -763,17 +852,20 @@ export async function syncConnection(options: {
     }
   }
 
+  const progressMade =
+    result.imported > 0 || result.updated > 0 || result.errors.length === 0;
+  const warning = result.rateLimited
+    ? RATE_LIMIT_PARTIAL_MESSAGE
+    : result.errors.length
+      ? result.errors[0]
+      : null;
+
   const { error: syncMetaError } = await supabase
     .from("bank_connections")
     .update({
-      // Persist progress even on soft/partial errors so the UI and incremental
-      // window move forward; keep the first warning for the user.
-      last_synced_at:
-        result.imported > 0 || result.updated > 0 || result.errors.length === 0
-          ? new Date().toISOString()
-          : conn.last_synced_at,
+      last_synced_at: progressMade ? new Date().toISOString() : conn.last_synced_at,
       status: conn.status,
-      error_message: result.errors.length ? result.errors[0] : null,
+      error_message: warning,
     })
     .eq("id", conn.id)
     .eq("user_id", userId);
@@ -786,11 +878,18 @@ export async function syncConnection(options: {
   return result;
 }
 
-/** Prefer incremental window after a clean sync; always overlap ~14 days. */
+/**
+ * Prefer incremental window after any prior sync/tx.
+ * Full 90-day window only on first connect or explicit fullSync.
+ */
 export function resolveSyncDateFrom(
   accountLastSyncedAt: string | null | undefined,
   connectionLastSyncedAt: string | null | undefined,
-  options?: { forceFullWindow?: boolean }
+  options?: {
+    forceFullWindow?: boolean;
+    lastTransactionDate?: string | null;
+    overlapDays?: number;
+  }
 ): Date {
   const now = Date.now();
   const floor = new Date(now);
@@ -798,13 +897,118 @@ export function resolveSyncDateFrom(
 
   if (options?.forceFullWindow) return floor;
 
-  const anchorIso = accountLastSyncedAt || connectionLastSyncedAt;
-  if (!anchorIso) return floor;
+  const overlapDays = options?.overlapDays ?? INCREMENTAL_OVERLAP_DAYS;
+  let best: Date | null = null;
+  for (const iso of [
+    options?.lastTransactionDate,
+    accountLastSyncedAt,
+    connectionLastSyncedAt,
+  ]) {
+    if (!iso) continue;
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) continue;
+    if (!best || d.getTime() > best.getTime()) best = d;
+  }
+  if (!best) return floor;
 
-  const incremental = new Date(anchorIso);
-  if (Number.isNaN(incremental.getTime())) return floor;
-  incremental.setDate(incremental.getDate() - 14);
+  const incremental = new Date(best);
+  incremental.setDate(incremental.getDate() - overlapDays);
   return incremental.getTime() > floor.getTime() ? incremental : floor;
+}
+
+/** Cron / admin: sync every active connection gently (sequential + delays). */
+export async function syncAllActiveConnections(options: {
+  supabase: SupabaseClient;
+  delayMs?: number;
+  maxConnections?: number;
+}): Promise<{
+  synced: number;
+  partial: number;
+  failed: number;
+  stoppedEarly: boolean;
+  results: Array<{
+    connectionId: string;
+    userId: string;
+    imported: number;
+    errors: string[];
+    rateLimited?: boolean;
+  }>;
+}> {
+  const delayMs = options.delayMs ?? 5_000;
+  const maxConnections = options.maxConnections ?? 25;
+
+  const { data: connections, error } = await options.supabase
+    .from("bank_connections")
+    .select("id, user_id, institution_name, last_synced_at, consent_expires_at, status")
+    .eq("status", "active")
+    .order("last_synced_at", { ascending: true, nullsFirst: true })
+    .limit(maxConnections);
+
+  if (error) {
+    throw new Error("Impossibile caricare le connessioni per il cron.");
+  }
+
+  const out = {
+    synced: 0,
+    partial: 0,
+    failed: 0,
+    stoppedEarly: false,
+    results: [] as Array<{
+      connectionId: string;
+      userId: string;
+      imported: number;
+      errors: string[];
+      rateLimited?: boolean;
+    }>,
+  };
+
+  const rows = connections ?? [];
+  for (let i = 0; i < rows.length; i++) {
+    const c = rows[i] as {
+      id: string;
+      user_id: string;
+      consent_expires_at: string | null;
+    };
+    if (
+      c.consent_expires_at &&
+      new Date(c.consent_expires_at).getTime() < Date.now()
+    ) {
+      continue;
+    }
+    if (i > 0) await sleep(delayMs);
+
+    try {
+      const result = await syncConnection({
+        supabase: options.supabase,
+        userId: c.user_id,
+        connectionId: c.id,
+      });
+      out.results.push({
+        connectionId: c.id,
+        userId: c.user_id,
+        imported: result.imported,
+        errors: result.errors,
+        rateLimited: result.rateLimited,
+      });
+      if (result.rateLimited) {
+        out.partial += 1;
+        out.stoppedEarly = true;
+        break;
+      }
+      if (result.errors.length) out.partial += 1;
+      else out.synced += 1;
+    } catch (err) {
+      out.failed += 1;
+      out.results.push({
+        connectionId: c.id,
+        userId: c.user_id,
+        imported: 0,
+        errors: [err instanceof Error ? err.message : "Errore sync"],
+      });
+    }
+  }
+
+  return out;
 }
 
 export async function listUserBankConnections(options: {

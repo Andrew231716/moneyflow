@@ -132,6 +132,14 @@ describe("Enable Banking booked-only transactions", () => {
   it("keeps first page when continuation page returns 422", async () => {
     process.env.ENABLEBANKING_APPLICATION_ID = "app-test-id";
     process.env.ENABLEBANKING_PRIVATE_KEY = TEST_PRIVATE_KEY;
+    vi.spyOn(globalThis, "setTimeout").mockImplementation(((
+      handler: TimerHandler,
+      _ms?: number,
+      ...args: unknown[]
+    ) => {
+      if (typeof handler === "function") handler(...(args as never[]));
+      return 0 as unknown as ReturnType<typeof setTimeout>;
+    }) as unknown as typeof setTimeout);
 
     let calls = 0;
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
@@ -255,5 +263,55 @@ describe("Enable Banking rate-limit retries", () => {
     const balances = await provider.getBalances("acc-1");
     expect(balances).toHaveLength(1);
     expect(calls).toBe(2);
+  });
+
+  it("returns partial txs with Italian rate-limit message on 429 mid-pagination", async () => {
+    process.env.ENABLEBANKING_APPLICATION_ID = "app-test-id";
+    process.env.ENABLEBANKING_PRIVATE_KEY = TEST_PRIVATE_KEY;
+    vi.spyOn(globalThis, "setTimeout").mockImplementation(((
+      handler: TimerHandler,
+      _ms?: number,
+      ...args: unknown[]
+    ) => {
+      if (typeof handler === "function") handler(...(args as never[]));
+      return 0 as unknown as ReturnType<typeof setTimeout>;
+    }) as unknown as typeof setTimeout);
+
+    let calls = 0;
+    const fetchMock = vi.fn(async () => {
+      calls += 1;
+      if (calls === 1) {
+        return new Response(
+          JSON.stringify({
+            transactions: [
+              {
+                entry_reference: "b1",
+                status: "BOOK",
+                booking_date: "2026-03-01",
+                credit_debit_indicator: "CRDT",
+                transaction_amount: { amount: "5.00", currency: "EUR" },
+              },
+            ],
+            continuation_key: "page-2",
+          }),
+          { status: 200 }
+        );
+      }
+      return new Response(
+        JSON.stringify({ error: "ASPSP_RATE_LIMIT_EXCEEDED" }),
+        { status: 429 }
+      );
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { RATE_LIMIT_PARTIAL_MESSAGE } = await import("../enablebanking-provider");
+    const provider = new EnableBankingProvider();
+    await expect(
+      provider.getTransactions({ accountId: "acc-1", dateFrom: "2026-01-01" })
+    ).rejects.toMatchObject({
+      name: "IncompleteTransactionsError",
+      message: RATE_LIMIT_PARTIAL_MESSAGE,
+      transactions: [expect.objectContaining({ id: "b1" })],
+    });
   });
 });

@@ -163,4 +163,6 @@ export interface SyncResult {
   updated: number;
   transferSuggestions: InternalTransferSuggestion[];
   errors: string[];
+  /** True when ASPSP / Enable Banking rate-limited the sync. */
+  rateLimited?: boolean;
 }
