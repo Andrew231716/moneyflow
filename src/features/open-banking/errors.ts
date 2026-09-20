@@ -20,8 +20,18 @@ export class OpenBankingProviderError extends Error {
 export const RATE_LIMIT_PARTIAL_MESSAGE =
   "Banca momentaneamente occupata — i movimenti già scaricati sono al sicuro. Riprova tra poco.";
 
-/** UI cooldown after ASPSP rate limit (seconds). Soft pause, not a hard outage. */
+/**
+ * Intesa / Enable Banking daily AIS multiplicity exhausted.
+ * Retries the same day only burn remaining quota — wait for the next calendar day.
+ */
+export const RATE_LIMIT_DAILY_MESSAGE =
+  "Quota giornaliera della banca esaurita. I movimenti già salvati sono al sicuro: riprova domani (il sync automatico notturno riprenderà da solo).";
+
+/** UI cooldown after ASPSP burst rate limit (seconds). Soft pause, not a hard outage. */
 export const RATE_LIMIT_RETRY_AFTER_SECONDS = 90;
+
+/** Cooldown when the ASPSP signals a daily multiplicity cap. */
+export const RATE_LIMIT_DAILY_RETRY_AFTER_SECONDS = 60 * 60 * 6;
 
 export class IncompleteTransactionsError extends Error {
   constructor(
@@ -35,11 +45,15 @@ export class IncompleteTransactionsError extends Error {
 
 export function friendlyProviderStatusMessage(
   status: number,
-  providerCode?: string | null
+  providerCode?: string | null,
+  providerMessage?: string | null
 ): string {
   const code = (providerCode ?? "").toUpperCase();
   if (code === "ASPSP_RATE_LIMIT_EXCEEDED" || status === 429) {
-    return "Troppe richieste al provider bancario. Riprova tra qualche minuto.";
+    if (/multiplicity per day|per day|daily/i.test(providerMessage ?? "")) {
+      return RATE_LIMIT_DAILY_MESSAGE;
+    }
+    return RATE_LIMIT_PARTIAL_MESSAGE;
   }
   if (code === "WRONG_REQUEST_PARAMETERS" || status === 422) {
     return "Parametri non validi per la banca. Riprova la sincronizzazione tra poco.";

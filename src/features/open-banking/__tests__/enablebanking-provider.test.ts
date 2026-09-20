@@ -224,45 +224,31 @@ describe("Enable Banking rate-limit retries", () => {
     delete process.env.ENABLEBANKING_PRIVATE_KEY;
   });
 
-  it("retries on ASPSP rate limit then succeeds", async () => {
+  it("does not retry on ASPSP rate limit (protects daily multiplicity)", async () => {
     process.env.ENABLEBANKING_APPLICATION_ID = "app-test-id";
     process.env.ENABLEBANKING_PRIVATE_KEY = TEST_PRIVATE_KEY;
-    vi.spyOn(globalThis, "setTimeout").mockImplementation(((
-      handler: TimerHandler,
-      _ms?: number,
-      ...args: unknown[]
-    ) => {
-      if (typeof handler === "function") handler(...(args as never[]));
-      return 0 as unknown as ReturnType<typeof setTimeout>;
-    }) as unknown as typeof setTimeout);
 
     let calls = 0;
     const fetchMock = vi.fn(async () => {
       calls += 1;
-      if (calls === 1) {
-        return new Response(
-          JSON.stringify({ error: "ASPSP_RATE_LIMIT_EXCEEDED", message: "slow down" }),
-          { status: 429 }
-        );
-      }
       return new Response(
         JSON.stringify({
-          balances: [
-            {
-              balance_amount: { amount: "10.00", currency: "EUR" },
-              balance_type: "interimAvailable",
-            },
-          ],
+          error: "ASPSP_RATE_LIMIT_EXCEEDED",
+          message: "The access on the account has been exceeding the consented multiplicity per day.",
         }),
-        { status: 200 }
+        { status: 429 }
       );
     });
     vi.stubGlobal("fetch", fetchMock);
 
+    const { RATE_LIMIT_DAILY_MESSAGE } = await import("../errors");
     const provider = new EnableBankingProvider();
-    const balances = await provider.getBalances("acc-1");
-    expect(balances).toHaveLength(1);
-    expect(calls).toBe(2);
+    await expect(provider.getBalances("acc-1")).rejects.toMatchObject({
+      name: "OpenBankingProviderError",
+      status: 429,
+      message: RATE_LIMIT_DAILY_MESSAGE,
+    });
+    expect(calls).toBe(1);
   });
 
   it("returns partial txs with Italian rate-limit message on 429 mid-pagination", async () => {

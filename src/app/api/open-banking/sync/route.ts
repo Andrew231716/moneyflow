@@ -4,7 +4,7 @@ import {
   OpenBankingHttpError,
   requireUser,
 } from "@/features/open-banking/auth";
-import { RATE_LIMIT_PARTIAL_MESSAGE, RATE_LIMIT_RETRY_AFTER_SECONDS } from "@/features/open-banking/errors";
+import { RATE_LIMIT_PARTIAL_MESSAGE, RATE_LIMIT_DAILY_MESSAGE, RATE_LIMIT_RETRY_AFTER_SECONDS, RATE_LIMIT_DAILY_RETRY_AFTER_SECONDS } from "@/features/open-banking/errors";
 import { syncConnection } from "@/features/open-banking/service";
 
 export const dynamic = "force-dynamic";
@@ -35,6 +35,7 @@ export async function POST(request: NextRequest) {
       userId: user.id,
       connectionId: body.connection_id,
       fullSync: Boolean(body.full_sync),
+      skipBalances: true,
     });
 
     const softOnly =
@@ -42,10 +43,15 @@ export async function POST(request: NextRequest) {
       (result.imported > 0 || result.updated > 0 || Boolean(result.rateLimited));
 
     const rateLimited = Boolean(result.rateLimited);
+    const dailyLimited = result.errors.some(
+      (e) => e === RATE_LIMIT_DAILY_MESSAGE || /quota giornaliera/i.test(e)
+    );
     const message = rateLimited
       ? result.imported > 0
-        ? `Importati ${result.imported} movimenti. ${RATE_LIMIT_PARTIAL_MESSAGE}`
-        : RATE_LIMIT_PARTIAL_MESSAGE
+        ? `Importati ${result.imported} movimenti. ${dailyLimited ? RATE_LIMIT_DAILY_MESSAGE : RATE_LIMIT_PARTIAL_MESSAGE}`
+        : dailyLimited
+          ? RATE_LIMIT_DAILY_MESSAGE
+          : RATE_LIMIT_PARTIAL_MESSAGE
       : result.errors.length === 0
         ? result.imported > 0
           ? `Sincronizzazione completata: ${result.imported} nuovi movimenti.`
@@ -58,7 +64,11 @@ export async function POST(request: NextRequest) {
       ok: result.errors.length === 0 && !rateLimited,
       partial: softOnly || rateLimited,
       rate_limited: rateLimited,
-      retry_after_seconds: rateLimited ? RATE_LIMIT_RETRY_AFTER_SECONDS : 0,
+      retry_after_seconds: rateLimited
+        ? dailyLimited
+          ? RATE_LIMIT_DAILY_RETRY_AFTER_SECONDS
+          : RATE_LIMIT_RETRY_AFTER_SECONDS
+        : 0,
       imported: result.imported,
       skipped: result.skipped,
       updated: result.updated,

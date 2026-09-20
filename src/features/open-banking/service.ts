@@ -17,6 +17,7 @@ import {
   IncompleteTransactionsError,
   OpenBankingConfigError,
   OpenBankingProviderError,
+  RATE_LIMIT_DAILY_MESSAGE,
   RATE_LIMIT_PARTIAL_MESSAGE,
 } from "./errors";
 import { classifyDescription } from "@/lib/finance/classification";
@@ -26,6 +27,12 @@ const ACCOUNT_SYNC_PAUSE_MS = 2_500;
 const BALANCE_TO_TX_PAUSE_MS = 800;
 /** Default overlap so late-posted bank rows are not missed. */
 const INCREMENTAL_OVERLAP_DAYS = 2;
+/** Manual sync lookback — recent window only; cron catches up history. */
+const MANUAL_LOOKBACK_DAYS = 7;
+/** Manual / cron page budget per click or cron tick. */
+const MANUAL_TX_MAX_PAGES = 2;
+const CRON_TX_MAX_PAGES = 2;
+const FULL_SYNC_TX_MAX_PAGES = 5;
 
 function sleep(ms: number): Promise<void> {
   if (process.env.VITEST === "true" || process.env.NODE_ENV === "test") {
@@ -36,9 +43,30 @@ function sleep(ms: number): Promise<void> {
 
 export function looksLikeRateLimitMessage(msg: string | null | undefined): boolean {
   if (!msg) return false;
-  return /troppe richieste|rate.?limit|già scaricati sono al sicuro|riprova tra (qualche|poco)|banca momentaneamente occupata|prossima sync/i.test(
+  return /troppe richieste|rate.?limit|già scaricati sono al sicuro|riprova tra (qualche|poco)|banca momentaneamente occupata|prossima sync|quota giornaliera|riprova domani|sincronizzazione parziale/i.test(
     msg
   );
+}
+
+function isDailyRateLimitMessage(msg: string | null | undefined): boolean {
+  if (!msg) return false;
+  return /quota giornaliera|riprova domani|multiplicity per day/i.test(msg);
+}
+
+type ConnectionMetadata = {
+  reference?: string;
+  /** ISO date: resume historical catch-up from here (survives recent-only manual sync). */
+  history_catchup_date?: string;
+  [key: string]: unknown;
+};
+
+function readConnectionMetadata(
+  meta: BankConnectionRow["metadata"]
+): ConnectionMetadata {
+  if (meta && typeof meta === "object" && !Array.isArray(meta)) {
+    return meta as ConnectionMetadata;
+  }
+  return {};
 }
 
 function isProviderRateLimit(err: unknown): boolean {
@@ -208,6 +236,7 @@ export async function handleConnectionCallback(options: {
       supabase: options.supabase,
       userId: options.userId,
       connectionId: connection.id,
+      fullSync: true,
     });
 
     return { connection, synced: result.errors.length === 0 };
@@ -292,6 +321,7 @@ export async function handleConnectionCallback(options: {
     supabase: options.supabase,
     userId: options.userId,
     connectionId: connection.id,
+    fullSync: true,
   });
 
   return { connection, synced: result.errors.length === 0 };
@@ -505,6 +535,11 @@ export async function syncConnection(options: {
   fullSync?: boolean;
   /** Skip balance calls to conserve ASPSP quota (cron / rate-limit recovery). */
   skipBalances?: boolean;
+  /**
+   * Cron / catch-up mode: ignore the 7-day manual cap and resume from
+   * history_catchup_date / last transaction so gaps can close over nights.
+   */
+  catchUp?: boolean;
 }): Promise<SyncResult> {
   const { supabase, userId, connectionId } = options;
 
@@ -520,6 +555,7 @@ export async function syncConnection(options: {
   }
 
   const conn = connection as BankConnectionRow;
+  const meta = readConnectionMetadata(conn.metadata);
 
   if (conn.status !== "active") {
     throw new OpenBankingHttpError("La connessione non è attiva. Completa o rinnova il collegamento.", 409);
@@ -574,19 +610,28 @@ export async function syncConnection(options: {
 
   const allSuggestions: InternalTransferSuggestion[] = [];
   const accounts = bankAccounts as BankAccountRow[];
+  const isFirstSync = !conn.last_synced_at;
   const skipBalances =
     Boolean(options.skipBalances) ||
+    Boolean(options.catchUp) ||
     looksLikeRateLimitMessage(conn.error_message) ||
-    // Incremental manual sync: skip balances unless fullSync — Intesa often
-    // rate-limits the balance call before any transactions are fetched.
-    (!options.fullSync &&
-      Boolean(conn.last_synced_at) &&
-      Date.now() - new Date(conn.last_synced_at!).getTime() < 12 * 60 * 60 * 1000);
+    // Re-sync after a prior run: skip balances to protect Intesa daily multiplicity.
+    (!options.fullSync && !isFirstSync);
+
+  const txMaxPages = options.fullSync || isFirstSync
+    ? FULL_SYNC_TX_MAX_PAGES
+    : options.catchUp
+      ? CRON_TX_MAX_PAGES
+      : MANUAL_TX_MAX_PAGES;
 
   for (let i = 0; i < accounts.length; i++) {
     const ba = accounts[i];
     if (result.rateLimited) {
-      result.errors.push(RATE_LIMIT_PARTIAL_MESSAGE);
+      result.errors.push(
+        isDailyRateLimitMessage(result.errors[0])
+          ? RATE_LIMIT_DAILY_MESSAGE
+          : RATE_LIMIT_PARTIAL_MESSAGE
+      );
       break;
     }
     if (i > 0) await sleep(ACCOUNT_SYNC_PAUSE_MS);
@@ -622,7 +667,11 @@ export async function syncConnection(options: {
         } catch (err) {
           if (isProviderRateLimit(err)) {
             result.rateLimited = true;
-            result.errors.push(RATE_LIMIT_PARTIAL_MESSAGE);
+            result.errors.push(
+              isDailyRateLimitMessage((err as Error).message)
+                ? RATE_LIMIT_DAILY_MESSAGE
+                : RATE_LIMIT_PARTIAL_MESSAGE
+            );
             break;
           }
           throw err;
@@ -639,18 +688,46 @@ export async function syncConnection(options: {
         .limit(1)
         .maybeSingle();
 
+      const lastTransactionDate =
+        (lastTxRow?.date as string | null | undefined) ?? null;
+      const catchupDate =
+        typeof meta.history_catchup_date === "string"
+          ? meta.history_catchup_date
+          : null;
+      // Prefer catch-up cursor / last tx over last_synced_at (which can race ahead
+      // after a partial historical import).
+      const watermarkDate = options.catchUp
+        ? catchupDate ?? lastTransactionDate
+        : lastTransactionDate;
+
       const dateFrom = resolveSyncDateFrom(ba.last_synced_at, conn.last_synced_at, {
-        forceFullWindow: Boolean(options.fullSync),
-        lastTransactionDate: (lastTxRow?.date as string | null | undefined) ?? null,
+        forceFullWindow: Boolean(options.fullSync) || isFirstSync,
+        lastTransactionDate: watermarkDate,
         overlapDays: INCREMENTAL_OVERLAP_DAYS,
+        maxLookbackDays:
+          options.fullSync || options.catchUp || isFirstSync
+            ? undefined
+            : MANUAL_LOOKBACK_DAYS,
       });
       const dateFromIso = dateFrom.toISOString().slice(0, 10);
 
+      // Seed catch-up when history is clearly behind (cron will drain it).
+      if (
+        !catchupDate &&
+        lastTransactionDate &&
+        Date.now() - new Date(lastTransactionDate).getTime() >
+          14 * 24 * 60 * 60 * 1000
+      ) {
+        meta.history_catchup_date = lastTransactionDate;
+      }
+
       let txs;
+      let incompleteFetch = false;
       try {
         txs = await provider.getTransactions({
           accountId: ba.provider_account_id,
           dateFrom: dateFromIso,
+          maxPages: txMaxPages,
         });
       } catch (err) {
         if (
@@ -662,15 +739,27 @@ export async function syncConnection(options: {
         ) {
           const incomplete = err as IncompleteTransactionsError;
           txs = incomplete.transactions;
-          if (looksLikeRateLimitMessage(incomplete.message)) {
+          incompleteFetch = true;
+          if (
+            looksLikeRateLimitMessage(incomplete.message) ||
+            isDailyRateLimitMessage(incomplete.message)
+          ) {
             result.rateLimited = true;
-            result.errors.push(RATE_LIMIT_PARTIAL_MESSAGE);
+            result.errors.push(
+              isDailyRateLimitMessage(incomplete.message)
+                ? RATE_LIMIT_DAILY_MESSAGE
+                : RATE_LIMIT_PARTIAL_MESSAGE
+            );
           } else {
             result.errors.push(incomplete.message);
           }
         } else if (isProviderRateLimit(err)) {
           result.rateLimited = true;
-          result.errors.push(RATE_LIMIT_PARTIAL_MESSAGE);
+          result.errors.push(
+            isDailyRateLimitMessage((err as Error).message)
+              ? RATE_LIMIT_DAILY_MESSAGE
+              : RATE_LIMIT_PARTIAL_MESSAGE
+          );
           break;
         } else {
           throw err;
@@ -818,6 +907,31 @@ export async function syncConnection(options: {
       allSuggestions.push(...suggestions);
       void newlyInsertedIds;
 
+      // Advance history catch-up cursor from this batch (do not use wall-clock last_synced).
+      const batchDates = normalized
+        .map((n) => n.date)
+        .filter((d): d is string => Boolean(d))
+        .sort();
+      const batchMax = batchDates[batchDates.length - 1] ?? null;
+      if (batchMax && (options.catchUp || options.fullSync || meta.history_catchup_date)) {
+        const prev = meta.history_catchup_date
+          ? new Date(meta.history_catchup_date).getTime()
+          : 0;
+        const next = new Date(batchMax).getTime();
+        if (next >= prev) {
+          meta.history_catchup_date = batchMax;
+        }
+      }
+      if (
+        meta.history_catchup_date &&
+        !incompleteFetch &&
+        !result.rateLimited &&
+        Date.now() - new Date(meta.history_catchup_date).getTime() <
+          3 * 24 * 60 * 60 * 1000
+      ) {
+        delete meta.history_catchup_date;
+      }
+
       if (result.imported > 0 || result.updated > 0 || !result.rateLimited) {
         await supabase
           .from("bank_accounts")
@@ -828,7 +942,11 @@ export async function syncConnection(options: {
     } catch (err) {
       if (isProviderRateLimit(err)) {
         result.rateLimited = true;
-        result.errors.push(RATE_LIMIT_PARTIAL_MESSAGE);
+        result.errors.push(
+          isDailyRateLimitMessage((err as Error).message)
+            ? RATE_LIMIT_DAILY_MESSAGE
+            : RATE_LIMIT_PARTIAL_MESSAGE
+        );
         break;
       }
       if (
@@ -861,10 +979,14 @@ export async function syncConnection(options: {
   const progressMade =
     result.imported > 0 || result.updated > 0 || result.errors.length === 0;
   // Rate-limit after a useful sync is ephemeral UI state — do not sticky-red the Conti page.
+  // Also never sticky-fail when the connection already has imported data.
+  const hasExistingData = accounts.some((a) => Boolean(a.last_synced_at));
   const warning = result.rateLimited
-    ? progressMade
+    ? progressMade || hasExistingData
       ? null
-      : RATE_LIMIT_PARTIAL_MESSAGE
+      : isDailyRateLimitMessage(result.errors[0])
+        ? RATE_LIMIT_DAILY_MESSAGE
+        : RATE_LIMIT_PARTIAL_MESSAGE
     : result.errors.length
       ? result.errors[0]
       : null;
@@ -875,6 +997,7 @@ export async function syncConnection(options: {
       last_synced_at: progressMade ? new Date().toISOString() : conn.last_synced_at,
       status: conn.status,
       error_message: warning,
+      metadata: meta,
     })
     .eq("id", conn.id)
     .eq("user_id", userId);
@@ -888,8 +1011,10 @@ export async function syncConnection(options: {
 }
 
 /**
- * Prefer incremental window after any prior sync/tx.
+ * Prefer the data watermark (last imported tx / catch-up cursor) over last_synced_at.
+ * last_synced_at can race ahead after a partial historical import and create permanent gaps.
  * Full 90-day window only on first connect or explicit fullSync.
+ * Manual syncs cap lookback to maxLookbackDays (default 7).
  */
 export function resolveSyncDateFrom(
   accountLastSyncedAt: string | null | undefined,
@@ -898,25 +1023,37 @@ export function resolveSyncDateFrom(
     forceFullWindow?: boolean;
     lastTransactionDate?: string | null;
     overlapDays?: number;
+    maxLookbackDays?: number;
   }
 ): Date {
   const now = Date.now();
-  const floor = new Date(now);
-  floor.setDate(floor.getDate() - 90);
+  const floor90 = new Date(now);
+  floor90.setDate(floor90.getDate() - 90);
 
-  if (options?.forceFullWindow) return floor;
+  if (options?.forceFullWindow) return floor90;
+
+  let floor = floor90;
+  if (options?.maxLookbackDays != null && options.maxLookbackDays > 0) {
+    const capped = new Date(now);
+    capped.setDate(capped.getDate() - options.maxLookbackDays);
+    if (capped.getTime() > floor.getTime()) floor = capped;
+  }
 
   const overlapDays = options?.overlapDays ?? INCREMENTAL_OVERLAP_DAYS;
+
+  // Data watermark first — never let a newer last_synced_at skip unfetched history.
   let best: Date | null = null;
-  for (const iso of [
-    options?.lastTransactionDate,
-    accountLastSyncedAt,
-    connectionLastSyncedAt,
-  ]) {
-    if (!iso) continue;
-    const d = new Date(iso);
-    if (Number.isNaN(d.getTime())) continue;
-    if (!best || d.getTime() > best.getTime()) best = d;
+  if (options?.lastTransactionDate) {
+    const d = new Date(options.lastTransactionDate);
+    if (!Number.isNaN(d.getTime())) best = d;
+  }
+  if (!best) {
+    for (const iso of [accountLastSyncedAt, connectionLastSyncedAt]) {
+      if (!iso) continue;
+      const d = new Date(iso);
+      if (Number.isNaN(d.getTime())) continue;
+      if (!best || d.getTime() > best.getTime()) best = d;
+    }
   }
   if (!best) return floor;
 
@@ -991,6 +1128,8 @@ export async function syncAllActiveConnections(options: {
         supabase: options.supabase,
         userId: c.user_id,
         connectionId: c.id,
+        catchUp: true,
+        skipBalances: true,
       });
       out.results.push({
         connectionId: c.id,

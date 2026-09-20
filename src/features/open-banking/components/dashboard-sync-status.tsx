@@ -29,7 +29,7 @@ function formatSync(iso: string | null): string {
 
 function looksLikeRateLimit(msg: string | null | undefined): boolean {
   if (!msg) return false;
-  return /troppe richieste|già scaricati sono al sicuro|riprova tra (qualche|poco)|banca momentaneamente occupata|prossima sync/i.test(
+  return /troppe richieste|rate.?limit|già scaricati|riprova tra|banca momentaneamente|quota giornaliera|riprova domani|sincronizzazione parziale|prossima sync/i.test(
     msg
   );
 }

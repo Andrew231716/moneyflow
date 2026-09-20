@@ -777,6 +777,25 @@ describe("resolveSyncDateFrom", () => {
     expect(d.toISOString().slice(0, 10)).toBe("2026-09-13");
   });
 
+  it("does not skip history when last_synced is ahead of last tx", () => {
+    const d = resolveSyncDateFrom("2026-09-20T12:00:00.000Z", "2026-09-20T12:00:00.000Z", {
+      lastTransactionDate: "2026-08-03",
+      overlapDays: 2,
+    });
+    expect(d.toISOString().slice(0, 10)).toBe("2026-08-01");
+  });
+
+  it("caps manual lookback to maxLookbackDays", () => {
+    const d = resolveSyncDateFrom(null, null, {
+      lastTransactionDate: "2026-06-01",
+      overlapDays: 2,
+      maxLookbackDays: 7,
+    });
+    const expected = new Date();
+    expected.setDate(expected.getDate() - 7);
+    expect(d.toISOString().slice(0, 10)).toBe(expected.toISOString().slice(0, 10));
+  });
+
   it("forces full window only when explicitly requested", () => {
     const anchor = "2026-09-10T12:00:00.000Z";
     const d = resolveSyncDateFrom(anchor, anchor, { forceFullWindow: true });

@@ -4,6 +4,7 @@ import {
   IncompleteTransactionsError,
   OpenBankingConfigError,
   OpenBankingProviderError,
+  RATE_LIMIT_DAILY_MESSAGE,
   RATE_LIMIT_PARTIAL_MESSAGE,
   friendlyProviderStatusMessage,
 } from "./errors";
@@ -112,9 +113,11 @@ function sleep(ms: number): Promise<void> {
 }
 
 /** Intesa / Enable Banking ASPSP limits need long pauses, not rapid retries. */
-const RATE_LIMIT_BACKOFF_MS = [5_000, 15_000, 45_000] as const;
+const RATE_LIMIT_BACKOFF_MS = [5_000, 15_000] as const;
 /** Pause between transaction pages to stay under ASPSP quotas. */
-const TX_PAGE_DELAY_MS = 2_500;
+const TX_PAGE_DELAY_MS = 3_500;
+/** Default page cap — callers pass 1–2 for manual/cron to protect daily multiplicity. */
+const DEFAULT_TX_MAX_PAGES = 8;
 
 function rateLimitBackoffMs(attempt: number): number {
   const idx = Math.min(Math.max(attempt - 1, 0), RATE_LIMIT_BACKOFF_MS.length - 1);
@@ -126,6 +129,14 @@ function isRateLimitError(err: unknown): boolean {
     err instanceof OpenBankingProviderError &&
     (err.status === 429 ||
       (err.providerCode ?? "").toUpperCase() === "ASPSP_RATE_LIMIT_EXCEEDED")
+  );
+}
+
+function isDailyMultiplicityLimit(err: unknown): boolean {
+  return (
+    err instanceof OpenBankingProviderError &&
+    (err.message === RATE_LIMIT_DAILY_MESSAGE ||
+      /quota giornaliera|multiplicity per day/i.test(err.message))
   );
 }
 
@@ -164,12 +175,23 @@ async function ebFetch<T>(
           typeof (errBody as { error: unknown }).error === "string"
             ? (errBody as { error: string }).error
             : null;
+        const providerMessage =
+          errBody &&
+          typeof errBody === "object" &&
+          "message" in errBody &&
+          typeof (errBody as { message: unknown }).message === "string"
+            ? (errBody as { message: string }).message
+            : null;
         const error = new OpenBankingProviderError(
-          friendlyProviderStatusMessage(res.status, providerCode),
+          friendlyProviderStatusMessage(res.status, providerCode, providerMessage),
           res.status,
           providerCode
         );
-        if (isRateLimitError(error) && attempt < maxRetries) {
+        // Never retry ASPSP rate limits — retries burn Intesa daily multiplicity.
+        if (isRateLimitError(error)) {
+          throw error;
+        }
+        if (attempt < maxRetries && res.status >= 500) {
           attempt += 1;
           await sleep(rateLimitBackoffMs(attempt));
           continue;
@@ -192,7 +214,16 @@ async function ebFetch<T>(
           name: "TimeoutError",
         });
       }
-      if (isRateLimitError(err) && attempt < maxRetries) {
+      if (isRateLimitError(err)) {
+        throw err;
+      }
+      if (
+        attempt < maxRetries &&
+        err &&
+        typeof err === "object" &&
+        "name" in err &&
+        (err as { name: string }).name === "TimeoutError"
+      ) {
         attempt += 1;
         await sleep(rateLimitBackoffMs(attempt));
         continue;
@@ -492,13 +523,15 @@ export class EnableBankingProvider implements OpenBankingProvider {
     const all: ProviderTransaction[] = [];
     let continuation: string | null = null;
     let pages = 0;
-    const maxPages = 50;
+    const maxPages = Math.max(1, Math.min(params.maxPages ?? DEFAULT_TX_MAX_PAGES, 50));
 
     do {
       pages += 1;
       if (pages > maxPages) {
         throw new IncompleteTransactionsError(
-          "Sincronizzazione movimenti incompleta: troppe pagine dal provider. Riprova.",
+          params.maxPages != null && params.maxPages <= 2
+            ? "Sincronizzazione parziale: altri movimenti verranno recuperati in automatico. Riprova più tardi se ne mancano."
+            : "Sincronizzazione movimenti incompleta: troppe pagine dal provider. Riprova.",
           all
         );
       }
@@ -514,14 +547,16 @@ export class EnableBankingProvider implements OpenBankingProvider {
         continuation_key?: string | null;
       };
       try {
-        // 2 long backoffs (5s + 15s); prefer partial save over burning the window.
-        data = await ebFetch(pagePath, {}, { timeoutMs: 25_000, maxRetries: 2 });
+        // No ASPSP rate-limit retries inside ebFetch — fail fast and keep partial pages.
+        data = await ebFetch(pagePath, {}, { timeoutMs: 25_000, maxRetries: 1 });
       } catch (err) {
         if (all.length > 0 && (continuation || isRateLimitError(err))) {
           throw new IncompleteTransactionsError(
-            isRateLimitError(err)
-              ? RATE_LIMIT_PARTIAL_MESSAGE
-              : "Sincronizzazione movimenti incompleta: il provider ha interrotto la paginazione. Riprova tra poco per i restanti.",
+            isDailyMultiplicityLimit(err)
+              ? RATE_LIMIT_DAILY_MESSAGE
+              : isRateLimitError(err)
+                ? RATE_LIMIT_PARTIAL_MESSAGE
+                : "Sincronizzazione movimenti incompleta: il provider ha interrotto la paginazione. Riprova tra poco per i restanti.",
             all
           );
         }

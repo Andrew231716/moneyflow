@@ -48,7 +48,7 @@ function statusLabel(status: string, expired: boolean): string {
 
 function looksLikeRateLimit(msg: string | null | undefined): boolean {
   if (!msg) return false;
-  return /troppe richieste|già scaricati sono al sicuro|riprova tra (qualche|poco)|banca momentaneamente occupata|prossima sync/i.test(
+  return /troppe richieste|rate.?limit|già scaricati|riprova tra|banca momentaneamente|quota giornaliera|riprova domani|sincronizzazione parziale/i.test(
     msg
   );
 }

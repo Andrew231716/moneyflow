@@ -98,6 +98,8 @@ export interface GetTransactionsParams {
   accountId: string;
   dateFrom?: string;
   dateTo?: string;
+  /** Cap Enable Banking pagination (manual/cron use 1–2 to stay under ASPSP quotas). */
+  maxPages?: number;
 }
 
 /** Normalized MoneyFlow-ready transaction before persistence. */
