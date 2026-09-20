@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import { AppShell } from "@/components/layout/app-shell";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
 import { fetchAccounts } from "@/lib/data/queries";
@@ -8,7 +9,9 @@ export default async function AccountsPage() {
   const accounts = await fetchAccounts();
   return (
     <AppShell title="Conti">
-      <AccountsManager accounts={accounts} />
+      <Suspense fallback={null}>
+        <AccountsManager accounts={accounts} />
+      </Suspense>
     </AppShell>
   );
 }

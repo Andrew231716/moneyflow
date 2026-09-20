@@ -31,6 +31,25 @@ export function italianErrorResponse(error: unknown): NextResponse {
       { status: 503 }
     );
   }
+  if (
+    error &&
+    typeof error === "object" &&
+    "name" in error &&
+    (error as { name: string }).name === "OpenBankingProviderError"
+  ) {
+    const status =
+      "status" in error && typeof (error as { status: unknown }).status === "number"
+        ? (error as { status: number }).status
+        : 502;
+    return NextResponse.json(
+      {
+        error:
+          (error as Error).message ||
+          "Errore nella comunicazione con il provider bancario.",
+      },
+      { status: status >= 400 && status < 600 ? status : 502 }
+    );
+  }
   // Generic — never leak secrets or bank payloads
   return NextResponse.json(
     { error: "Si è verificato un errore. Riprova più tardi." },

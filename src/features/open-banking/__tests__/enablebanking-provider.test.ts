@@ -128,4 +128,76 @@ describe("Enable Banking booked-only transactions", () => {
     expect(txs[0].description).toBe("Booked");
     expect(txs[0].amount).toBe(-10);
   });
+
+  it("keeps first page when continuation page returns 422", async () => {
+    process.env.ENABLEBANKING_APPLICATION_ID = "app-test-id";
+    process.env.ENABLEBANKING_PRIVATE_KEY = TEST_PRIVATE_KEY;
+
+    let calls = 0;
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      calls += 1;
+      const url = String(input);
+      if (calls === 1) {
+        expect(url).toContain("transaction_status=BOOK");
+        expect(url).not.toContain("continuation_key=");
+        return new Response(
+          JSON.stringify({
+            transactions: [
+              {
+                entry_reference: "b1",
+                status: "BOOK",
+                booking_date: "2026-03-01",
+                credit_debit_indicator: "DBIT",
+                transaction_amount: { amount: "10.00", currency: "EUR" },
+              },
+            ],
+            continuation_key: "page-2",
+          }),
+          { status: 200 }
+        );
+      }
+      expect(url).toContain("continuation_key=page-2");
+      expect(url).toContain("transaction_status=BOOK");
+      return new Response(
+        JSON.stringify({
+          code: 422,
+          error: "WRONG_REQUEST_PARAMETERS",
+          message: "dateFrom mismatch",
+        }),
+        { status: 422 }
+      );
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const provider = new EnableBankingProvider();
+    const txs = await provider.getTransactions({
+      accountId: "acc-1",
+      dateFrom: "2026-01-01",
+    });
+    expect(txs).toHaveLength(1);
+    expect(txs[0].id).toBe("b1");
+  });
+
+  it("maps session accounts from UUID strings or objects", async () => {
+    process.env.ENABLEBANKING_APPLICATION_ID = "app-test-id";
+    process.env.ENABLEBANKING_PRIVATE_KEY = TEST_PRIVATE_KEY;
+
+    const fetchMock = vi.fn(async () => {
+      return new Response(
+        JSON.stringify({
+          session_id: "sess-1",
+          accounts: ["aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"],
+          aspsp: { name: "Intesa Sanpaolo", country: "IT" },
+        }),
+        { status: 200 }
+      );
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const provider = new EnableBankingProvider();
+    const connection = await provider.getConnection("sess-1");
+    expect(connection.accounts).toEqual([
+      "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+    ]);
+  });
 });

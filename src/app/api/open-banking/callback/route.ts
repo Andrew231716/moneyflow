@@ -10,7 +10,7 @@ export const dynamic = "force-dynamic";
 /**
  * GET /api/open-banking/callback
  * GoCardless: ref / requisition id
- * Enable Banking: code + state
+ * Enable Banking: code + state (or error + error_description)
  */
 export async function GET(request: NextRequest) {
   const appOrigin =
@@ -21,6 +21,18 @@ export async function GET(request: NextRequest) {
   try {
     const { user, supabase } = await requireUser();
     const { searchParams } = request.nextUrl;
+
+    const providerError = searchParams.get("error");
+    if (providerError) {
+      const reason =
+        /denied|cancel|rejected/i.test(providerError) ||
+        /denied|cancel|rejected/i.test(searchParams.get("error_description") ?? "")
+          ? "rejected"
+          : "error";
+      return NextResponse.redirect(
+        new URL(`/accounts/connect-bank?status=${reason}`, appOrigin)
+      );
+    }
 
     const code = searchParams.get("code");
     const state = searchParams.get("state");
@@ -45,16 +57,16 @@ export async function GET(request: NextRequest) {
     });
 
     const status = connection.status;
-    if (status === "active" && synced) {
-      return NextResponse.redirect(
-        new URL("/accounts?bank=connected", appOrigin)
-      );
+    // Auth succeeded → land on Conti even if the first sync was partial.
+    if (status === "active") {
+      const url = new URL("/accounts", appOrigin);
+      url.searchParams.set("bank", "connected");
+      if (!synced) url.searchParams.set("sync", "partial");
+      return NextResponse.redirect(url);
     }
 
     const reason =
-      status === "active" && !synced
-        ? "error"
-        : status === "rejected"
+      status === "rejected"
         ? "rejected"
         : status === "expired"
           ? "expired"

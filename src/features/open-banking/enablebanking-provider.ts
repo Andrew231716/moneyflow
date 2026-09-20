@@ -122,9 +122,18 @@ async function ebFetch<T>(
       signal: timeout.signal,
     });
     if (!res.ok) {
+      const errBody = await parseJsonSafe(res);
+      const providerCode =
+        errBody &&
+        typeof errBody === "object" &&
+        "error" in errBody &&
+        typeof (errBody as { error: unknown }).error === "string"
+          ? (errBody as { error: string }).error
+          : null;
       throw new OpenBankingProviderError(
-        friendlyProviderStatusMessage(res.status),
-        res.status
+        friendlyProviderStatusMessage(res.status, providerCode),
+        res.status,
+        providerCode
       );
     }
     if (res.status === 204) return undefined as T;
@@ -172,7 +181,7 @@ interface EbSessionAccount {
 
 interface EbSessionResponse {
   session_id: string;
-  accounts: EbSessionAccount[];
+  accounts: Array<EbSessionAccount | string>;
   access?: {
     valid_until?: string;
     balances?: boolean;
@@ -202,7 +211,11 @@ interface EbTransaction {
   debtor?: { name?: string };
 }
 
-function mapAccount(a: EbSessionAccount): ProviderAccount {
+/** Session payloads may return full account objects or bare UUID strings. */
+function mapSessionAccount(a: EbSessionAccount | string): ProviderAccount {
+  if (typeof a === "string") {
+    return { id: a };
+  }
   return {
     id: a.uid,
     iban: a.account_id?.iban ?? null,
@@ -210,6 +223,17 @@ function mapAccount(a: EbSessionAccount): ProviderAccount {
     currency: a.currency ?? null,
     product: a.product ?? null,
   };
+}
+
+function consentValidUntilIso(maximumConsentValiditySec?: number | null): string {
+  const requestedSec = 90 * 24 * 60 * 60;
+  const maxSec =
+    maximumConsentValiditySec != null && maximumConsentValiditySec > 0
+      ? maximumConsentValiditySec
+      : requestedSec;
+  // Stay slightly under ASPSP max to avoid boundary rejections.
+  const cappedSec = Math.min(requestedSec, Math.max(60, maxSec - 60));
+  return new Date(Date.now() + cappedSec * 1000).toISOString();
 }
 
 function mapTx(tx: EbTransaction): ProviderTransaction {
@@ -265,7 +289,13 @@ export class EnableBankingProvider implements OpenBankingProvider {
     params: CreateConnectionParams
   ): Promise<ProviderConnection> {
     const { country, name } = decodeInstitutionId(params.institutionId);
-    const validUntil = new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString();
+    const aspsps = await ebFetch<{ aspsps: EbAspsp[] }>(
+      `/aspsps?country=${encodeURIComponent(country)}`
+    );
+    const aspsp = (aspsps.aspsps ?? []).find(
+      (a) => a.name === name && (a.country || country).toUpperCase() === country
+    );
+    const validUntil = consentValidUntilIso(aspsp?.maximum_consent_validity);
 
     const data = await ebFetch<EbAuthResponse>("/auth", {
       method: "POST",
@@ -309,7 +339,9 @@ export class EnableBankingProvider implements OpenBankingProvider {
       body: JSON.stringify({ code: params.code }),
     });
 
-    const accounts = (session.accounts ?? []).map(mapAccount);
+    const accounts = (session.accounts ?? [])
+      .map(mapSessionAccount)
+      .filter((a) => Boolean(a.id));
     const institutionId = session.aspsp
       ? encodeInstitutionId(session.aspsp.country, session.aspsp.name)
       : "";
@@ -334,7 +366,9 @@ export class EnableBankingProvider implements OpenBankingProvider {
     const session = await ebFetch<EbSessionResponse>(
       `/sessions/${encodeURIComponent(connectionId)}`
     );
-    const accounts = (session.accounts ?? []).map(mapAccount);
+    const accounts = (session.accounts ?? [])
+      .map(mapSessionAccount)
+      .filter((a) => Boolean(a.id));
     return {
       id: session.session_id,
       status: "ACTIVE",
@@ -406,18 +440,27 @@ export class EnableBankingProvider implements OpenBankingProvider {
     // Only booked / accounted transactions (avoid pending duplicates).
     q.set("transaction_status", "BOOK");
     const qs = q.toString();
-    const path = `/accounts/${encodeURIComponent(params.accountId)}/transactions${qs ? `?${qs}` : ""}`;
+    const basePath = `/accounts/${encodeURIComponent(params.accountId)}/transactions`;
 
     const all: ProviderTransaction[] = [];
     let continuation: string | null = null;
     do {
-      const pagePath: string = continuation
-        ? `${path}${qs ? "&" : "?"}continuation_key=${encodeURIComponent(continuation)}`
-        : path;
-      const data: {
+      const pageQuery = new URLSearchParams(q);
+      if (continuation) pageQuery.set("continuation_key", continuation);
+      const pagePath = `${basePath}?${pageQuery.toString()}`;
+      let data: {
         transactions?: EbTransaction[];
         continuation_key?: string | null;
-      } = await ebFetch(pagePath);
+      };
+      try {
+        data = await ebFetch(pagePath);
+      } catch (err) {
+        // Continuation pages can 422 if ASPSP rejects param drift; keep pages already fetched.
+        if (all.length > 0 && continuation) {
+          break;
+        }
+        throw err;
+      }
       const booked = (data.transactions ?? []).filter(
         (t: EbTransaction) => !t.status || t.status.toUpperCase() === "BOOK"
       );

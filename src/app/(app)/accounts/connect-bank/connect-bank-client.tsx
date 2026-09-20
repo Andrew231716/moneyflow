@@ -14,6 +14,8 @@ const STATUS_MESSAGES: Record<string, string> = {
   suspended: "Connessione sospesa dalla banca. Riprova più tardi.",
   error: "Si è verificato un errore durante il collegamento. Riprova.",
   pending: "Autorizzazione ancora in corso. Controlla lo stato tra poco.",
+  sync_error:
+    "Banca collegata, ma la sincronizzazione dei movimenti non è riuscita. Vai su Conti e premi Sincronizza.",
 };
 
 export default function ConnectBankClient() {

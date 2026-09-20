@@ -1,8 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Landmark, Plus, Wallet } from "lucide-react";
 import { toast } from "sonner";
 import type { Account, AccountType } from "@/types/database";
@@ -38,10 +38,24 @@ const emptyForm = {
 
 export function AccountsManager({ accounts }: { accounts: Account[] }) {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Account | null>(null);
   const [form, setForm] = useState(emptyForm);
   const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (searchParams.get("bank") !== "connected") return;
+    if (searchParams.get("sync") === "partial") {
+      toast.message("Banca collegata", {
+        description:
+          "Il saldo è aggiornato. Se i movimenti mancano, usa Sincronizza nella connessione.",
+      });
+    } else {
+      toast.success("Banca collegata con successo.");
+    }
+    router.replace("/accounts");
+  }, [searchParams, router]);
 
   const total = accounts.reduce((s, a) => s + Number(a.balance), 0);
 
