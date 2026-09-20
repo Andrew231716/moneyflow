@@ -2,6 +2,9 @@ import { describe, expect, it } from "vitest";
 import {
   calcMonthSummary,
   calcTotalAvailability,
+  calcDisponibilitaTotale,
+  calcOpenDebtsTotal,
+  calcNetWorth,
   getBudgetState,
   calcBudgetProgress,
   calcRecurringTotals,
@@ -12,6 +15,7 @@ import {
 import type {
   Account,
   Budget,
+  Debt,
   Goal,
   RecurringTransaction,
   Transaction,
@@ -151,5 +155,38 @@ describe("financial engine", () => {
     expect(calcReservedGoalsTotal(goals)).toBe(350);
     expect(isGoalReached(goals[0])).toBe(true);
     expect(isGoalSettled(goals[2])).toBe(true);
+  });
+
+  it("adds unsettled goals to headline disponibilità", () => {
+    const accounts = [
+      { balance: 285, is_archived: false },
+      { balance: 300, is_archived: false },
+      { balance: 50, is_archived: true },
+    ] as Account[];
+    const goals = [
+      {
+        name: "Matrimonio",
+        current_amount: 200,
+        status: "completed",
+        settled: false,
+      },
+      {
+        name: "Vecchio",
+        current_amount: 100,
+        status: "completed",
+        settled: true,
+      },
+    ] as Goal[];
+    expect(calcTotalAvailability(accounts)).toBe(585);
+    expect(calcDisponibilitaTotale(accounts, goals)).toBe(785);
+  });
+
+  it("sums open debts and net worth separately from disponibilità", () => {
+    const debts = [
+      { name: "Prestito", amount: 100, paid_at: null },
+      { name: "Vecchio", amount: 50, paid_at: "2026-09-01T00:00:00.000Z" },
+    ] as Debt[];
+    expect(calcOpenDebtsTotal(debts)).toBe(100);
+    expect(calcNetWorth(785, debts)).toBe(685);
   });
 });

@@ -1,13 +1,19 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import Link from "next/link";
+import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Landmark, Plus, Wallet } from "lucide-react";
+import { HandCoins, Landmark, Plus, Wallet } from "lucide-react";
 import { toast } from "sonner";
-import type { Account, AccountType } from "@/types/database";
+import type { Account, AccountType, Goal } from "@/types/database";
 import { createClient } from "@/lib/supabase/client";
 import { writeAudit } from "@/lib/data/mutations";
+import {
+  calcDisponibilitaTotale,
+  calcReservedGoalsTotal,
+  calcTotalAvailability,
+} from "@/lib/finance/engine";
+import { formatCurrency } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -36,7 +42,13 @@ const emptyForm = {
   color: "#0d9488",
 };
 
-export function AccountsManager({ accounts }: { accounts: Account[] }) {
+export function AccountsManager({
+  accounts,
+  goals = [],
+}: {
+  accounts: Account[];
+  goals?: Goal[];
+}) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [open, setOpen] = useState(false);
@@ -57,10 +69,13 @@ export function AccountsManager({ accounts }: { accounts: Account[] }) {
     router.replace("/accounts");
   }, [searchParams, router]);
 
-  const total = accounts.reduce((s, a) => s + Number(a.balance), 0);
+  const accountsTotal = calcTotalAvailability(accounts);
+  const reservedGoalsTotal = calcReservedGoalsTotal(goals);
+  const total = calcDisponibilitaTotale(accounts, goals);
   const savingsAccounts = accounts.filter((a) => a.type === "savings");
   const otherAccounts = accounts.filter((a) => a.type !== "savings");
   const savingsTotal = savingsAccounts.reduce((s, a) => s + Number(a.balance), 0);
+  const liquidTotal = accountsTotal - savingsTotal;
 
   function openCreate() {
     setEditing(null);
@@ -173,9 +188,26 @@ export function AccountsManager({ accounts }: { accounts: Account[] }) {
         }
       />
 
-      <div className="mf-surface p-4 flex items-center justify-between gap-3">
-        <p className="text-sm text-muted-foreground">Totale disponibilità</p>
-        <MoneyValue amount={total} size="lg" />
+      <div className="mf-surface p-4 space-y-2">
+        <div className="flex items-center justify-between gap-3">
+          <p className="text-sm text-muted-foreground">Totale disponibilità</p>
+          <MoneyValue amount={total} size="lg" />
+        </div>
+        {(savingsTotal > 0 || reservedGoalsTotal > 0) && (
+          <p className="text-xs text-muted-foreground">
+            {[
+              `Conti ${formatCurrency(liquidTotal)}`,
+              savingsTotal > 0
+                ? `Salvadanaio ${formatCurrency(savingsTotal)}`
+                : null,
+              reservedGoalsTotal > 0
+                ? `Obiettivi ${formatCurrency(reservedGoalsTotal)}`
+                : null,
+            ]
+              .filter(Boolean)
+              .join(" · ")}
+          </p>
+        )}
       </div>
 
       {accounts.length === 0 ? (
@@ -232,6 +264,22 @@ export function AccountsManager({ accounts }: { accounts: Account[] }) {
           )}
         </>
       )}
+
+      <Link
+        href="/debts"
+        className="mf-surface flex items-center justify-between gap-3 p-4 transition-colors hover:bg-muted/40"
+      >
+        <div className="flex items-center gap-3 min-w-0">
+          <HandCoins className="h-5 w-5 shrink-0 text-muted-foreground" />
+          <div className="min-w-0">
+            <p className="text-sm font-medium">Debiti da saldare</p>
+            <p className="text-xs text-muted-foreground">
+              Passività separate dalla disponibilità
+            </p>
+          </div>
+        </div>
+        <span className="text-xs text-muted-foreground shrink-0">Apri</span>
+      </Link>
 
       <BankConnectionsPanel />
 

@@ -175,6 +175,19 @@ export interface Goal {
   updated_at: string;
 }
 
+/** Manual liability — not part of disponibilità; shown separately as Debiti da saldare. */
+export interface Debt {
+  id: string;
+  user_id: string;
+  name: string;
+  amount: number;
+  notes: string | null;
+  /** null = ancora da saldare */
+  paid_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface RecurringTransaction {
   id: string;
   user_id: string;

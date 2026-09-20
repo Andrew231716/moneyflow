@@ -20,6 +20,7 @@ import { formatCurrency } from "@/lib/utils";
 import type {
   Account,
   BudgetProgress,
+  Debt,
   Goal,
   Insight,
   MonthSummary,
@@ -62,6 +63,9 @@ export function DashboardView(props: {
   goals: Goal[];
   savingsAccounts: Account[];
   reservedGoalsTotal: number;
+  debts: Debt[];
+  openDebtsTotal: number;
+  netWorth: number;
   recent: Transaction[];
   forecast: {
     projectedExpense: number;
@@ -85,6 +89,9 @@ export function DashboardView(props: {
     goals,
     savingsAccounts,
     reservedGoalsTotal,
+    debts,
+    openDebtsTotal,
+    netWorth,
     recent,
     forecast,
     insights,
@@ -93,12 +100,13 @@ export function DashboardView(props: {
     isEmpty,
   } = props;
   const savingsBalance = savingsAccounts.reduce((s, a) => s + Number(a.balance), 0);
-  const liquidBalance = availability - savingsBalance;
+  const liquidBalance = availability - savingsBalance - reservedGoalsTotal;
   const reservedGoals = goals.filter(
     (g) => g.status !== "cancelled" && !g.settled
   );
   const activeGoals = reservedGoals.filter((g) => g.status === "active");
   const highlightGoals = reservedGoals.slice(0, 4);
+  const openDebts = debts.filter((d) => !d.paid_at).slice(0, 4);
 
   const router = useRouter();
   const savingsDelta = summary.savings - previousSummary.savings;
@@ -137,8 +145,18 @@ export function DashboardView(props: {
         title="Disponibilità"
         value={availability}
         hint={
-          savingsBalance > 0
-            ? `Liquidi ${formatCurrency(liquidBalance)} · Salvadanaio ${formatCurrency(savingsBalance)}`
+          reservedGoalsTotal > 0 || savingsBalance > 0
+            ? [
+                `Conti ${formatCurrency(liquidBalance)}`,
+                savingsBalance > 0
+                  ? `Salvadanaio ${formatCurrency(savingsBalance)}`
+                  : null,
+                reservedGoalsTotal > 0
+                  ? `Obiettivi ${formatCurrency(reservedGoalsTotal)}`
+                  : null,
+              ]
+                .filter(Boolean)
+                .join(" · ")
             : "Tutti i conti"
         }
         trend={{
@@ -149,6 +167,19 @@ export function DashboardView(props: {
           positive: savingsDelta === 0 ? undefined : savingsDeltaPositive,
         }}
       />
+
+      {openDebtsTotal > 0 && (
+        <div className="mf-surface px-4 py-3 flex flex-wrap items-center justify-between gap-2 text-sm">
+          <span className="text-muted-foreground">
+            Netto (disponibilità − debiti)
+          </span>
+          <MoneyValue
+            amount={netWorth}
+            size="sm"
+            tone={netWorth >= 0 ? "success" : "danger"}
+          />
+        </div>
+      )}
 
       <QuickActions actions={quickActions} />
 
@@ -256,8 +287,8 @@ export function DashboardView(props: {
                   ))}
                 </div>
                 <p className="text-[11px] text-muted-foreground leading-relaxed">
-                  Fonte di verità per la disponibilità: i saldi conti. Gli
-                  obiettivi riservati a destra possono già essere inclusi qui.
+                  Conti risparmio separati dagli obiettivi. Il totale in alto =
+                  Conti + Salvadanaio + Obiettivi non saldati.
                 </p>
               </div>
             ) : (
@@ -293,6 +324,48 @@ export function DashboardView(props: {
           </section>
         </div>
       )}
+
+      <section className="mf-surface p-5 space-y-4">
+        <SectionHeader
+          title="Debiti da saldare"
+          description={
+            openDebtsTotal > 0
+              ? `${formatCurrency(openDebtsTotal)} ancora da pagare`
+              : "Passività manuali (non in disponibilità)"
+          }
+          href="/debts"
+          linkLabel="Gestisci"
+        />
+        {openDebtsTotal > 0 ? (
+          <div className="space-y-3">
+            <MoneyValue amount={openDebtsTotal} size="lg" tone="danger" />
+            <ul className="space-y-2">
+              {openDebts.map((d) => (
+                <li
+                  key={d.id}
+                  className="flex items-center justify-between gap-3 text-sm"
+                >
+                  <span className="truncate font-medium">{d.name}</span>
+                  <MoneyValue amount={Number(d.amount)} size="sm" tone="danger" />
+                </li>
+              ))}
+            </ul>
+            <p className="text-[11px] text-muted-foreground leading-relaxed">
+              I debiti non riducono la Disponibilità. Netto ={" "}
+              {formatCurrency(netWorth)}.
+            </p>
+          </div>
+        ) : (
+          <div className="space-y-3 py-1">
+            <p className="text-sm text-muted-foreground">
+              Nessun debito aperto. Aggiungi un importo da saldare se ti serve.
+            </p>
+            <Button asChild size="sm" variant="outline" className="min-h-touch">
+              <Link href="/debts">Aggiungi debito</Link>
+            </Button>
+          </div>
+        )}
+      </section>
 
       <div className="grid gap-4 lg:grid-cols-2">
         <CutPotentialSection result={cutPotential} compact />

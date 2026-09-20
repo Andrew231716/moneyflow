@@ -12,7 +12,7 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
 /** UI cooldown hint after ASPSP rate limit (seconds). */
-const RATE_LIMIT_RETRY_AFTER_SECONDS = 120;
+const RATE_LIMIT_RETRY_AFTER_SECONDS = 300;
 
 /**
  * POST /api/open-banking/sync

@@ -12,6 +12,7 @@ import type {
   Budget,
   BudgetProgress,
   BudgetProgressState,
+  Debt,
   Goal,
   Insight,
   MonthSummary,
@@ -169,15 +170,40 @@ export function isGoalSettled(goal: Goal): boolean {
 
 /**
  * Sum of current_amount for goals that are not settled.
- * These are earmarked but still count as available until marked Saldato.
- * Note: amounts may already live inside savings accounts — Home shows
- * Salvadanaio (accounts) and Obiettivi (reserved) as separate views;
- * totale disponibilità uses account balances only (source of truth).
+ * Earmarked funds still count in Totale disponibilità until marked Saldato.
  */
 export function calcReservedGoalsTotal(goals: Goal[]): number {
   return goals
     .filter((g) => g.status !== "cancelled" && !isGoalSettled(g))
     .reduce((sum, g) => sum + Number(g.current_amount), 0);
+}
+
+/**
+ * Headline Totale disponibilità: conti (incl. Salvadanaio) + obiettivi non saldati.
+ * Goal current_amount is tracked separately from account balances in MoneyFlow
+ * (e.g. Salvadanaio 300 + Matrimonio 200), so both are additive until Saldato.
+ */
+export function calcDisponibilitaTotale(
+  accounts: Account[],
+  goals: Goal[] = []
+): number {
+  return calcTotalAvailability(accounts) + calcReservedGoalsTotal(goals);
+}
+
+/** Open debts (paid_at is null) — liabilities, not subtracted from disponibilità. */
+export function isDebtOpen(debt: Debt): boolean {
+  return !debt.paid_at;
+}
+
+export function calcOpenDebtsTotal(debts: Debt[]): number {
+  return debts
+    .filter(isDebtOpen)
+    .reduce((sum, d) => sum + Number(d.amount), 0);
+}
+
+/** Netto patrimoniale semplice: disponibilità − debiti aperti. */
+export function calcNetWorth(disponibilita: number, debts: Debt[]): number {
+  return disponibilita - calcOpenDebtsTotal(debts);
 }
 
 export function frequencyToMonthlyFactor(frequency: RecurringFrequency): number {

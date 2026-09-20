@@ -4,6 +4,7 @@ import type {
   Budget,
   Category,
   ClassificationRule,
+  Debt,
   Goal,
   RecurringTransaction,
   Transaction,
@@ -65,6 +66,15 @@ export async function fetchGoals(): Promise<Goal[]> {
     .select("*")
     .order("created_at", { ascending: false });
   return (data as Goal[]) ?? [];
+}
+
+export async function fetchDebts(): Promise<Debt[]> {
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from("debts")
+    .select("*")
+    .order("created_at", { ascending: false });
+  return (data as Debt[]) ?? [];
 }
 
 export async function fetchRecurring(): Promise<RecurringTransaction[]> {

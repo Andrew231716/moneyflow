@@ -575,7 +575,13 @@ export async function syncConnection(options: {
   const allSuggestions: InternalTransferSuggestion[] = [];
   const accounts = bankAccounts as BankAccountRow[];
   const skipBalances =
-    Boolean(options.skipBalances) || looksLikeRateLimitMessage(conn.error_message);
+    Boolean(options.skipBalances) ||
+    looksLikeRateLimitMessage(conn.error_message) ||
+    // Incremental manual sync: skip balances unless fullSync — Intesa often
+    // rate-limits the balance call before any transactions are fetched.
+    (!options.fullSync &&
+      Boolean(conn.last_synced_at) &&
+      Date.now() - new Date(conn.last_synced_at!).getTime() < 12 * 60 * 60 * 1000);
 
   for (let i = 0; i < accounts.length; i++) {
     const ba = accounts[i];

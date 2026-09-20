@@ -9,6 +9,8 @@ import type {
 import {
   calcBudgetProgress,
   calcMonthSummary,
+  calcDisponibilitaTotale,
+  calcReservedGoalsTotal,
   calcTotalAvailability,
   generateInsights,
   forecastMonthEnd,
@@ -513,7 +515,8 @@ export function runQueryTransactions(
 
 export function runQueryBalance(
   accounts: Account[],
-  accountHint?: string
+  accountHint?: string,
+  goals: Goal[] = []
 ): { summaryText: string; total: number; lines: { name: string; amount: number }[] } {
   const active = accounts.filter((a) => !a.is_archived);
   let list = active;
@@ -528,18 +531,23 @@ export function runQueryBalance(
     if (matched.length) list = matched;
   }
   const total = list.reduce((s, a) => s + Number(a.balance), 0);
-  const allTotal = calcTotalAvailability(active);
+  const accountsTotal = calcTotalAvailability(active);
+  const reserved = calcReservedGoalsTotal(goals);
+  const allTotal = calcDisponibilitaTotale(active, goals);
   const lines = list.map((a) => ({ name: a.name, amount: Number(a.balance) }));
+  if (list.length === active.length && reserved > 0) {
+    lines.push({ name: "Obiettivi (non saldati)", amount: reserved });
+  }
   const detail = lines
     .map((l) => `• ${l.name}: ${formatCurrency(l.amount)}`)
     .join("\n");
   return {
-    total,
+    total: list.length === active.length ? allTotal : total,
     lines,
     summaryText:
       list.length === active.length
         ? `Disponibilità totale: ${formatCurrency(allTotal)}\n${detail}`
-        : `Saldo selezionato: ${formatCurrency(total)}\n${detail}\n(Totale conti: ${formatCurrency(allTotal)})`,
+        : `Saldo selezionato: ${formatCurrency(total)}\n${detail}\n(Totale conti: ${formatCurrency(accountsTotal)}${reserved > 0 ? ` · Obiettivi: ${formatCurrency(reserved)}` : ""})`,
   };
 }
 

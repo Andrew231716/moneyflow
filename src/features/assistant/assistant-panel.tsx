@@ -142,7 +142,7 @@ export function AssistantPanel({
     }
 
     if (intent.type === "query_balance") {
-      const result = runQueryBalance(accounts, intent.payload.accountHint);
+      const result = runQueryBalance(accounts, intent.payload.accountHint, goals);
       pushAssistant(result.summaryText, [
         { label: "Totale", amount: result.total },
         ...result.lines.slice(0, 6).map((l) => ({

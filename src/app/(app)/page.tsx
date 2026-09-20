@@ -3,6 +3,7 @@ import { hasSupabaseEnv } from "@/lib/supabase/env";
 import {
   fetchAccounts,
   fetchBudgets,
+  fetchDebts,
   fetchGoals,
   fetchRecurring,
   fetchTransactions,
@@ -13,8 +14,10 @@ import {
   calcExpenseByCategory,
   calcMonthSummary,
   calcMonthlySeries,
+  calcDisponibilitaTotale,
+  calcNetWorth,
+  calcOpenDebtsTotal,
   calcReservedGoalsTotal,
-  calcTotalAvailability,
   forecastMonthEnd,
   generateInsights,
 } from "@/lib/finance/engine";
@@ -27,13 +30,15 @@ export default async function DashboardPage() {
     return null;
   }
 
-  const [accounts, transactions, budgets, goals, recurring] = await Promise.all([
-    fetchAccounts(),
-    fetchTransactions(12),
-    fetchBudgets(),
-    fetchGoals(),
-    fetchRecurring(),
-  ]);
+  const [accounts, transactions, budgets, goals, recurring, debts] =
+    await Promise.all([
+      fetchAccounts(),
+      fetchTransactions(12),
+      fetchBudgets(),
+      fetchGoals(),
+      fetchRecurring(),
+      fetchDebts(),
+    ]);
 
   const now = new Date();
   const summary = calcMonthSummary(transactions, now);
@@ -49,10 +54,12 @@ export default async function DashboardPage() {
     forecast,
     previousSummary,
   });
-  const availability = calcTotalAvailability(accounts);
+  const reservedGoalsTotal = calcReservedGoalsTotal(goals);
+  const availability = calcDisponibilitaTotale(accounts, goals);
+  const openDebtsTotal = calcOpenDebtsTotal(debts);
+  const netWorth = calcNetWorth(availability, debts);
   const recent = transactions.filter((t) => t.type !== "transfer").slice(0, 8);
   const savingsAccounts = accounts.filter((a) => a.type === "savings");
-  const reservedGoalsTotal = calcReservedGoalsTotal(goals);
   const cutPotential = rankCutPotential({
     transactions,
     budgets,
@@ -76,6 +83,9 @@ export default async function DashboardPage() {
         goals={goals}
         savingsAccounts={savingsAccounts}
         reservedGoalsTotal={reservedGoalsTotal}
+        debts={debts}
+        openDebtsTotal={openDebtsTotal}
+        netWorth={netWorth}
         recent={recent}
         forecast={forecast}
         insights={insights}

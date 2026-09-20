@@ -15,7 +15,7 @@ type ConnectionView = BankConnectionRow & {
   consent_message: string | null;
 };
 
-const RATE_LIMIT_COOLDOWN_SEC = 120;
+const RATE_LIMIT_COOLDOWN_SEC = 300;
 
 function formatSync(iso: string | null): string {
   if (!iso) return "Mai sincronizzato";
