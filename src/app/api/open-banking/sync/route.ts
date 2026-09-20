@@ -7,6 +7,8 @@ import {
 import { syncConnection } from "@/features/open-banking/service";
 
 export const dynamic = "force-dynamic";
+/** Allow multi-page Intesa sync with rate-limit backoff (Hobby may still cap lower). */
+export const maxDuration = 60;
 
 /**
  * POST /api/open-banking/sync
@@ -30,13 +32,25 @@ export async function POST(request: NextRequest) {
       connectionId: body.connection_id,
     });
 
+    const softOnly =
+      result.errors.length > 0 && (result.imported > 0 || result.updated > 0);
+
     return NextResponse.json({
       ok: result.errors.length === 0,
+      partial: softOnly,
       imported: result.imported,
       skipped: result.skipped,
       updated: result.updated,
       transfer_suggestions: result.transferSuggestions,
       errors: result.errors,
+      message:
+        result.errors.length === 0
+          ? result.imported > 0
+            ? `Sincronizzazione completata: ${result.imported} nuovi movimenti.`
+            : "Sincronizzazione completata. Nessun nuovo movimento."
+          : softOnly
+            ? `Importati ${result.imported} movimenti. ${result.errors[0]}`
+            : result.errors[0] ?? "Sincronizzazione non riuscita.",
     });
   } catch (error) {
     return italianErrorResponse(error);

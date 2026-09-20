@@ -102,60 +102,90 @@ export async function createEnableBankingJwt(): Promise<string> {
     .sign(key);
 }
 
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function isRateLimitError(err: unknown): boolean {
+  return (
+    err instanceof OpenBankingProviderError &&
+    (err.status === 429 ||
+      (err.providerCode ?? "").toUpperCase() === "ASPSP_RATE_LIMIT_EXCEEDED")
+  );
+}
+
 async function ebFetch<T>(
   path: string,
-  init: RequestInit = {}
+  init: RequestInit = {},
+  options?: { maxRetries?: number; timeoutMs?: number }
 ): Promise<T> {
-  const headers = new Headers(init.headers);
-  headers.set("Accept", "application/json");
-  if (init.body && !headers.has("Content-Type")) {
-    headers.set("Content-Type", "application/json");
-  }
-  const jwt = await createEnableBankingJwt();
-  headers.set("Authorization", `Bearer ${jwt}`);
+  const maxRetries = options?.maxRetries ?? 4;
+  const timeoutMs = options?.timeoutMs ?? 20_000;
+  let attempt = 0;
 
-  const timeout = createRequestTimeout(init.signal);
-  try {
-    const res = await fetch(`${API_BASE}${path}`, {
-      ...init,
-      headers,
-      cache: "no-store",
-      signal: timeout.signal,
-    });
-    if (!res.ok) {
-      const errBody = await parseJsonSafe(res);
-      const providerCode =
-        errBody &&
-        typeof errBody === "object" &&
-        "error" in errBody &&
-        typeof (errBody as { error: unknown }).error === "string"
-          ? (errBody as { error: string }).error
-          : null;
-      throw new OpenBankingProviderError(
-        friendlyProviderStatusMessage(res.status, providerCode),
-        res.status,
-        providerCode
-      );
+  while (true) {
+    const headers = new Headers(init.headers);
+    headers.set("Accept", "application/json");
+    if (init.body && !headers.has("Content-Type")) {
+      headers.set("Content-Type", "application/json");
     }
-    if (res.status === 204) return undefined as T;
-    return (await parseJsonSafe(res)) as T;
-  } catch (err) {
-    if (
-      !init.signal?.aborted &&
-      timeout.signal.aborted &&
-      err &&
-      typeof err === "object" &&
-      "name" in err &&
-      ((err as { name: string }).name === "AbortError" ||
-        (err as { name: string }).name === "TimeoutError")
-    ) {
-      throw Object.assign(new Error("Timeout del provider bancario. Riprova più tardi."), {
-        name: "TimeoutError",
+    const jwt = await createEnableBankingJwt();
+    headers.set("Authorization", `Bearer ${jwt}`);
+
+    const timeout = createRequestTimeout(init.signal, timeoutMs);
+    try {
+      const res = await fetch(`${API_BASE}${path}`, {
+        ...init,
+        headers,
+        cache: "no-store",
+        signal: timeout.signal,
       });
+      if (!res.ok) {
+        const errBody = await parseJsonSafe(res);
+        const providerCode =
+          errBody &&
+          typeof errBody === "object" &&
+          "error" in errBody &&
+          typeof (errBody as { error: unknown }).error === "string"
+            ? (errBody as { error: string }).error
+            : null;
+        const error = new OpenBankingProviderError(
+          friendlyProviderStatusMessage(res.status, providerCode),
+          res.status,
+          providerCode
+        );
+        if (isRateLimitError(error) && attempt < maxRetries) {
+          attempt += 1;
+          await sleep(1_200 * 2 ** (attempt - 1) + Math.floor(Math.random() * 400));
+          continue;
+        }
+        throw error;
+      }
+      if (res.status === 204) return undefined as T;
+      return (await parseJsonSafe(res)) as T;
+    } catch (err) {
+      if (
+        !init.signal?.aborted &&
+        timeout.signal.aborted &&
+        err &&
+        typeof err === "object" &&
+        "name" in err &&
+        ((err as { name: string }).name === "AbortError" ||
+          (err as { name: string }).name === "TimeoutError")
+      ) {
+        throw Object.assign(new Error("Timeout del provider bancario. Riprova più tardi."), {
+          name: "TimeoutError",
+        });
+      }
+      if (isRateLimitError(err) && attempt < maxRetries) {
+        attempt += 1;
+        await sleep(1_200 * 2 ** (attempt - 1) + Math.floor(Math.random() * 400));
+        continue;
+      }
+      throw err;
+    } finally {
+      timeout.clear();
     }
-    throw err;
-  } finally {
-    timeout.clear();
   }
 }
 
@@ -458,6 +488,8 @@ export class EnableBankingProvider implements OpenBankingProvider {
         );
       }
 
+      if (pages > 1) await sleep(450);
+
       const pageQuery = new URLSearchParams(q);
       if (continuation) pageQuery.set("continuation_key", continuation);
       const pagePath = `${basePath}?${pageQuery.toString()}`;
@@ -466,11 +498,14 @@ export class EnableBankingProvider implements OpenBankingProvider {
         continuation_key?: string | null;
       };
       try {
-        data = await ebFetch(pagePath);
+        data = await ebFetch(pagePath, {}, { timeoutMs: 25_000, maxRetries: 5 });
       } catch (err) {
         if (all.length > 0 && continuation) {
+          const reason = isRateLimitError(err)
+            ? "limite richieste della banca raggiunto"
+            : "il provider ha interrotto la paginazione";
           throw new IncompleteTransactionsError(
-            "Sincronizzazione movimenti incompleta: il provider ha interrotto la paginazione. Riprova tra poco.",
+            `Sincronizzazione movimenti incompleta: ${reason}. Riprova tra poco per i restanti.`,
             all
           );
         }

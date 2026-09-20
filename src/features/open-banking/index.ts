@@ -23,6 +23,7 @@ export {
   listUserBankConnections,
   disconnectConnection,
   confirmInternalTransfer,
+  resolveSyncDateFrom,
 } from "./service";
 export {
   normalizeInstitutionName,

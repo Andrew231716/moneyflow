@@ -206,3 +206,54 @@ describe("Enable Banking booked-only transactions", () => {
     ]);
   });
 });
+
+describe("Enable Banking rate-limit retries", () => {
+  afterEach(() => {
+    clearEnableBankingKeyCache();
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+    delete process.env.ENABLEBANKING_APPLICATION_ID;
+    delete process.env.ENABLEBANKING_PRIVATE_KEY;
+  });
+
+  it("retries on ASPSP rate limit then succeeds", async () => {
+    process.env.ENABLEBANKING_APPLICATION_ID = "app-test-id";
+    process.env.ENABLEBANKING_PRIVATE_KEY = TEST_PRIVATE_KEY;
+    vi.spyOn(globalThis, "setTimeout").mockImplementation(((
+      handler: TimerHandler,
+      _ms?: number,
+      ...args: unknown[]
+    ) => {
+      if (typeof handler === "function") handler(...(args as never[]));
+      return 0 as unknown as ReturnType<typeof setTimeout>;
+    }) as unknown as typeof setTimeout);
+
+    let calls = 0;
+    const fetchMock = vi.fn(async () => {
+      calls += 1;
+      if (calls === 1) {
+        return new Response(
+          JSON.stringify({ error: "ASPSP_RATE_LIMIT_EXCEEDED", message: "slow down" }),
+          { status: 429 }
+        );
+      }
+      return new Response(
+        JSON.stringify({
+          balances: [
+            {
+              balance_amount: { amount: "10.00", currency: "EUR" },
+              balance_type: "interimAvailable",
+            },
+          ],
+        }),
+        { status: 200 }
+      );
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const provider = new EnableBankingProvider();
+    const balances = await provider.getBalances("acc-1");
+    expect(balances).toHaveLength(1);
+    expect(calls).toBe(2);
+  });
+});

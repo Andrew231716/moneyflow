@@ -23,10 +23,11 @@ export function MobileBottomNav() {
   return (
     <>
       <nav
-        className="md:hidden fixed bottom-0 inset-x-0 z-40 border-t border-border/80 bg-card/95 backdrop-blur-md safe-bottom shadow-lift"
+        className="md:hidden fixed bottom-0 inset-x-0 z-50 border-t border-border/80 bg-card/95 backdrop-blur-md shadow-lift pointer-events-auto"
+        style={{ paddingBottom: "env(safe-area-inset-bottom, 0px)" }}
         aria-label="Navigazione mobile"
       >
-        <ul className="grid grid-cols-5 gap-0.5 px-1 pt-1">
+        <ul className="grid grid-cols-5 gap-0.5 px-1 pt-1.5 pb-1">
           {mobilePrimaryNav.map((item) => {
             const active =
               item.href === "/"
@@ -38,7 +39,8 @@ export function MobileBottomNav() {
                 <Link
                   href={item.href}
                   className={cn(
-                    "flex flex-col items-center justify-center gap-0.5 rounded-xl py-2 min-h-[52px] text-[10px] font-medium",
+                    "flex flex-col items-center justify-center gap-0.5 rounded-xl px-1 text-[10px] font-medium",
+                    "min-h-11 min-w-11 touch-manipulation",
                     active ? "text-primary" : "text-muted-foreground"
                   )}
                   aria-current={active ? "page" : undefined}
@@ -54,7 +56,8 @@ export function MobileBottomNav() {
               type="button"
               onClick={() => setMoreOpen(true)}
               className={cn(
-                "flex w-full flex-col items-center justify-center gap-0.5 rounded-xl py-2 min-h-[52px] text-[10px] font-medium",
+                "flex w-full flex-col items-center justify-center gap-0.5 rounded-xl px-1 text-[10px] font-medium",
+                "min-h-11 min-w-11 touch-manipulation",
                 moreActive || moreOpen ? "text-primary" : "text-muted-foreground"
               )}
               aria-haspopup="dialog"
@@ -70,7 +73,8 @@ export function MobileBottomNav() {
       <Sheet open={moreOpen} onOpenChange={setMoreOpen}>
         <SheetContent
           side="bottom"
-          className="rounded-t-3xl safe-bottom px-4 pb-6 max-h-[80dvh]"
+          className="rounded-t-3xl px-4 pb-6 max-h-[80dvh]"
+          style={{ paddingBottom: "max(1.5rem, env(safe-area-inset-bottom, 0px))" }}
         >
           <SheetHeader className="text-left pb-3">
             <SheetTitle>Altro</SheetTitle>
@@ -85,7 +89,7 @@ export function MobileBottomNav() {
                   href={item.href}
                   onClick={() => setMoreOpen(false)}
                   className={cn(
-                    "flex items-center gap-3 rounded-xl px-3 py-3 min-h-touch text-sm font-medium",
+                    "flex items-center gap-3 rounded-xl px-3 py-3 min-h-11 text-sm font-medium touch-manipulation",
                     active
                       ? "bg-primary/10 text-primary"
                       : "text-foreground hover:bg-muted"

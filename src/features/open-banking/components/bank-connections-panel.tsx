@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { Loader2, RefreshCw, Unplug, Link2 } from "lucide-react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import type { BankAccountRow, BankConnectionRow } from "@/features/open-banking/types";
@@ -58,7 +59,7 @@ export function BankConnectionsPanel() {
     setError(null);
     try {
       const res = await fetch("/api/open-banking/accounts");
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         setError(data.error ?? "Impossibile caricare le connessioni.");
         setConnections([]);
@@ -85,13 +86,35 @@ export function BankConnectionsPanel() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ connection_id: connectionId }),
       });
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
       await refresh();
-      if (!res.ok || data.ok === false || data.errors?.length) {
-        setError(data.error ?? data.errors?.[0] ?? "Sincronizzazione non riuscita.");
+      if (!res.ok) {
+        const msg = data.error ?? data.message ?? "Sincronizzazione non riuscita.";
+        setError(msg);
+        toast.error(msg);
+        return;
       }
+      if (data.ok) {
+        toast.success(data.message ?? "Sincronizzazione completata.");
+        return;
+      }
+      if (data.partial) {
+        const msg =
+          data.message ??
+          data.errors?.[0] ??
+          "Sincronizzazione parziale. Riprova tra poco per i movimenti restanti.";
+        setError(msg);
+        toast.message("Sincronizzazione parziale", { description: msg });
+        return;
+      }
+      const msg =
+        data.message ?? data.error ?? data.errors?.[0] ?? "Sincronizzazione non riuscita.";
+      setError(msg);
+      toast.error(msg);
     } catch {
-      setError("Sincronizzazione non riuscita.");
+      const msg = "Sincronizzazione non riuscita. Controlla la connessione e riprova.";
+      setError(msg);
+      toast.error(msg);
     } finally {
       setBusyId(null);
     }
@@ -109,7 +132,7 @@ export function BankConnectionsPanel() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ connection_id: connectionId }),
       });
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
       await refresh();
       if (!res.ok) {
         setError(data.error ?? "Disconnessione non riuscita.");
@@ -120,6 +143,10 @@ export function BankConnectionsPanel() {
       setBusyId(null);
     }
   }
+
+  const hasIntesa = connections.some((c) =>
+    /intesa/i.test(c.institution_name ?? "")
+  );
 
   return (
     <div className="mf-surface p-5 space-y-4">
@@ -139,8 +166,19 @@ export function BankConnectionsPanel() {
       </div>
 
       {error && (
-        <p className="text-sm text-destructive rounded-xl border border-destructive/20 bg-destructive/5 px-3 py-2" role="alert">
+        <p
+          className="text-sm text-destructive rounded-xl border border-destructive/20 bg-destructive/5 px-3 py-2"
+          role="alert"
+        >
           {error}
+        </p>
+      )}
+
+      {hasIntesa && (
+        <p className="text-xs text-muted-foreground rounded-xl border border-border/70 bg-muted/40 px-3 py-2">
+          I salvadanai (XME Salvadanaio) e gli obiettivi dell&apos;app Intesa Sanpaolo non
+          sono disponibili tramite Open Banking: la banca espone solo i conti di
+          pagamento (saldo e movimenti), non i contenitori di risparmio privati.
         </p>
       )}
 
@@ -187,15 +225,21 @@ export function BankConnectionsPanel() {
                 <p className="text-xs text-muted-foreground">
                   Ultima sync: {formatSync(c.last_synced_at)}
                 </p>
+                {c.error_message && !c.consent_expired && (
+                  <p className="text-xs text-warning">{c.error_message}</p>
+                )}
                 {c.consent_message && (
                   <p className="text-xs text-warning">{c.consent_message}</p>
                 )}
                 {c.bank_accounts?.length > 0 && (
-                  <p className="text-xs text-muted-foreground">
-                    {c.bank_accounts.length} conto
-                    {c.bank_accounts.length === 1 ? "" : "i"} collegato
-                    {c.bank_accounts.length === 1 ? "" : "i"}
-                  </p>
+                  <ul className="text-xs text-muted-foreground space-y-0.5">
+                    {c.bank_accounts.map((ba) => (
+                      <li key={ba.id}>
+                        {ba.name || "Conto"}
+                        {ba.iban_masked ? ` · ${ba.iban_masked}` : ""}
+                      </li>
+                    ))}
+                  </ul>
                 )}
               </div>
               <div className="flex flex-wrap gap-2">
@@ -220,7 +264,7 @@ export function BankConnectionsPanel() {
                     ) : (
                       <RefreshCw />
                     )}
-                    Sync
+                    Sincronizza
                   </Button>
                 )}
                 <Button

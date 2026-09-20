@@ -25,6 +25,7 @@ import {
   disconnectConnection,
   handleConnectionCallback,
   syncConnection,
+  resolveSyncDateFrom,
 } from "../service";
 
 type Row = Record<string, unknown>;
@@ -735,5 +736,30 @@ describe("disconnectConnection", () => {
         connectionId: other.id,
       })
     ).rejects.toThrow(/non trovata|non autorizzata/i);
+  });
+});
+
+describe("resolveSyncDateFrom", () => {
+  it("uses 90-day floor when no prior sync", () => {
+    const d = resolveSyncDateFrom(null, null);
+    const expected = new Date();
+    expected.setDate(expected.getDate() - 90);
+    expect(Math.abs(d.getTime() - expected.getTime())).toBeLessThan(2000);
+  });
+
+  it("uses incremental window after a clean sync", () => {
+    const anchor = "2026-09-10T12:00:00.000Z";
+    const d = resolveSyncDateFrom(anchor, anchor);
+    const expected = new Date(anchor);
+    expected.setDate(expected.getDate() - 14);
+    expect(d.toISOString().slice(0, 10)).toBe(expected.toISOString().slice(0, 10));
+  });
+
+  it("forces full window when previous error remains", () => {
+    const anchor = "2026-09-10T12:00:00.000Z";
+    const d = resolveSyncDateFrom(anchor, anchor, { forceFullWindow: true });
+    const expected = new Date();
+    expected.setDate(expected.getDate() - 90);
+    expect(Math.abs(d.getTime() - expected.getTime())).toBeLessThan(2000);
   });
 });

@@ -553,8 +553,9 @@ export async function syncConnection(options: {
         }
       }
 
-      const dateFrom = new Date();
-      dateFrom.setDate(dateFrom.getDate() - 90);
+      const dateFrom = resolveSyncDateFrom(ba.last_synced_at, conn.last_synced_at, {
+        forceFullWindow: Boolean(conn.error_message),
+      });
       const dateFromIso = dateFrom.toISOString().slice(0, 10);
 
       let txs;
@@ -744,7 +745,12 @@ export async function syncConnection(options: {
   const { error: syncMetaError } = await supabase
     .from("bank_connections")
     .update({
-      last_synced_at: result.errors.length ? conn.last_synced_at : new Date().toISOString(),
+      // Persist progress even on soft/partial errors so the UI and incremental
+      // window move forward; keep the first warning for the user.
+      last_synced_at:
+        result.imported > 0 || result.updated > 0 || result.errors.length === 0
+          ? new Date().toISOString()
+          : conn.last_synced_at,
       status: conn.status,
       error_message: result.errors.length ? result.errors[0] : null,
     })
@@ -757,6 +763,27 @@ export async function syncConnection(options: {
 
   result.transferSuggestions = allSuggestions;
   return result;
+}
+
+/** Prefer incremental window after a clean sync; always overlap ~14 days. */
+export function resolveSyncDateFrom(
+  accountLastSyncedAt: string | null | undefined,
+  connectionLastSyncedAt: string | null | undefined,
+  options?: { forceFullWindow?: boolean }
+): Date {
+  const now = Date.now();
+  const floor = new Date(now);
+  floor.setDate(floor.getDate() - 90);
+
+  if (options?.forceFullWindow) return floor;
+
+  const anchorIso = accountLastSyncedAt || connectionLastSyncedAt;
+  if (!anchorIso) return floor;
+
+  const incremental = new Date(anchorIso);
+  if (Number.isNaN(incremental.getTime())) return floor;
+  incremental.setDate(incremental.getDate() - 14);
+  return incremental.getTime() > floor.getTime() ? incremental : floor;
 }
 
 export async function listUserBankConnections(options: {
