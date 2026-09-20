@@ -68,4 +68,25 @@ describe("classification rules", () => {
       })
     ).toBe(true);
   });
+
+  it("falls back to built-in Italian merchants", () => {
+    const moreCats = [
+      ...cats,
+      { id: "c2", name: "Abbonamenti", type: "expense" },
+    ] as Category[];
+    const cat = classifyDescription("NETFLIX.COM", [], moreCats);
+    expect(cat?.id).toBe("c2");
+  });
+
+  it("can disable built-in defaults", () => {
+    const moreCats = [
+      ...cats,
+      { id: "c2", name: "Abbonamenti", type: "expense" },
+    ] as Category[];
+    expect(
+      classifyDescription("NETFLIX.COM", [], moreCats, {
+        useBuiltInDefaults: false,
+      })
+    ).toBeNull();
+  });
 });

@@ -1,0 +1,97 @@
+/** Built-in Italian merchant patterns keyed by system category name. */
+export type DefaultRuleSeed = {
+  pattern: string;
+  categoryName: string;
+  priority: number;
+};
+
+export const DEFAULT_IT_CLASSIFICATION_RULES: DefaultRuleSeed[] = [
+  // Alimentari
+  { pattern: "Esselunga", categoryName: "Alimentari", priority: 10 },
+  { pattern: "Coop", categoryName: "Alimentari", priority: 10 },
+  { pattern: "Conad", categoryName: "Alimentari", priority: 10 },
+  { pattern: "Lidl", categoryName: "Alimentari", priority: 10 },
+  { pattern: "Carrefour", categoryName: "Alimentari", priority: 10 },
+  { pattern: "Eurospin", categoryName: "Alimentari", priority: 10 },
+  { pattern: "Pam", categoryName: "Alimentari", priority: 9 },
+  { pattern: "Penny", categoryName: "Alimentari", priority: 9 },
+  { pattern: "MD S.p.A", categoryName: "Alimentari", priority: 9 },
+  { pattern: "MD SPA", categoryName: "Alimentari", priority: 9 },
+  { pattern: "Aldi", categoryName: "Alimentari", priority: 9 },
+  { pattern: "Iper", categoryName: "Alimentari", priority: 8 },
+  { pattern: "Todis", categoryName: "Alimentari", priority: 8 },
+  // Trasporti
+  { pattern: "Eni", categoryName: "Trasporti", priority: 9 },
+  { pattern: "Q8", categoryName: "Trasporti", priority: 9 },
+  { pattern: "IP Station", categoryName: "Trasporti", priority: 9 },
+  { pattern: "Tamoil", categoryName: "Trasporti", priority: 9 },
+  { pattern: "Shell", categoryName: "Trasporti", priority: 9 },
+  { pattern: "ATM", categoryName: "Trasporti", priority: 8 },
+  { pattern: "Trenitalia", categoryName: "Trasporti", priority: 8 },
+  { pattern: "Italo", categoryName: "Trasporti", priority: 8 },
+  { pattern: "Uber", categoryName: "Trasporti", priority: 8 },
+  { pattern: "Free Now", categoryName: "Trasporti", priority: 8 },
+  { pattern: "Telepass", categoryName: "Trasporti", priority: 9 },
+  { pattern: "Autogrill", categoryName: "Trasporti", priority: 7 },
+  { pattern: "MyCicero", categoryName: "Trasporti", priority: 8 },
+  { pattern: "UnipolMove", categoryName: "Trasporti", priority: 8 },
+  // Bollette / telco
+  { pattern: "ENEL", categoryName: "Bollette", priority: 10 },
+  { pattern: "Eni Plenitude", categoryName: "Bollette", priority: 10 },
+  { pattern: "A2A", categoryName: "Bollette", priority: 9 },
+  { pattern: "Hera", categoryName: "Bollette", priority: 9 },
+  { pattern: "Acea", categoryName: "Bollette", priority: 9 },
+  { pattern: "TIM", categoryName: "Bollette", priority: 9 },
+  { pattern: "Vodafone", categoryName: "Bollette", priority: 9 },
+  { pattern: "WindTre", categoryName: "Bollette", priority: 9 },
+  { pattern: "Wind Tre", categoryName: "Bollette", priority: 9 },
+  { pattern: "Iliad", categoryName: "Bollette", priority: 9 },
+  { pattern: "Fastweb", categoryName: "Bollette", priority: 9 },
+  { pattern: "Sky Italia", categoryName: "Bollette", priority: 8 },
+  { pattern: "Sky IT", categoryName: "Bollette", priority: 8 },
+  // Abbonamenti
+  { pattern: "Netflix", categoryName: "Abbonamenti", priority: 10 },
+  { pattern: "Spotify", categoryName: "Abbonamenti", priority: 10 },
+  { pattern: "Amazon Prime", categoryName: "Abbonamenti", priority: 9 },
+  { pattern: "Disney+", categoryName: "Abbonamenti", priority: 9 },
+  { pattern: "Disney Plus", categoryName: "Abbonamenti", priority: 9 },
+  { pattern: "Apple.com/bill", categoryName: "Abbonamenti", priority: 9 },
+  { pattern: "Google *", categoryName: "Abbonamenti", priority: 7 },
+  { pattern: "PlayStation", categoryName: "Abbonamenti", priority: 8 },
+  { pattern: "Xbox", categoryName: "Abbonamenti", priority: 8 },
+  { pattern: "DAZN", categoryName: "Abbonamenti", priority: 9 },
+  { pattern: "YouTube Premium", categoryName: "Abbonamenti", priority: 9 },
+  // Ristoranti
+  { pattern: "McDonald", categoryName: "Ristoranti", priority: 8 },
+  { pattern: "Starbucks", categoryName: "Ristoranti", priority: 8 },
+  { pattern: "Burger King", categoryName: "Ristoranti", priority: 8 },
+  { pattern: "KFC", categoryName: "Ristoranti", priority: 8 },
+  { pattern: "Deliveroo", categoryName: "Ristoranti", priority: 9 },
+  { pattern: "Glovo", categoryName: "Ristoranti", priority: 9 },
+  { pattern: "Just Eat", categoryName: "Ristoranti", priority: 9 },
+  { pattern: "Uber Eats", categoryName: "Ristoranti", priority: 9 },
+  // Casa / shopping
+  { pattern: "IKEA", categoryName: "Casa", priority: 9 },
+  { pattern: "Leroy Merlin", categoryName: "Casa", priority: 9 },
+  { pattern: "MediaWorld", categoryName: "Casa", priority: 8 },
+  { pattern: "Unieuro", categoryName: "Casa", priority: 8 },
+  { pattern: "Amazon", categoryName: "Altro uscita", priority: 5 },
+  { pattern: "Zara", categoryName: "Abbigliamento", priority: 8 },
+  { pattern: "H&M", categoryName: "Abbigliamento", priority: 8 },
+  { pattern: "OVS", categoryName: "Abbigliamento", priority: 8 },
+  { pattern: "Decathlon", categoryName: "Svago", priority: 8 },
+  // Salute
+  { pattern: "Farmacia", categoryName: "Salute", priority: 8 },
+  { pattern: "LloydsFarmacia", categoryName: "Salute", priority: 9 },
+  { pattern: "Planet Pharma", categoryName: "Salute", priority: 8 },
+  // Viaggi
+  { pattern: "Booking.com", categoryName: "Viaggi", priority: 9 },
+  { pattern: "Airbnb", categoryName: "Viaggi", priority: 9 },
+  { pattern: "Ryanair", categoryName: "Viaggi", priority: 9 },
+  { pattern: "easyJet", categoryName: "Viaggi", priority: 9 },
+  { pattern: "Wizz Air", categoryName: "Viaggi", priority: 9 },
+  // Entrate tipiche
+  { pattern: "Stipendio", categoryName: "Stipendio", priority: 10 },
+  { pattern: "ACCREDITO STIPENDIO", categoryName: "Stipendio", priority: 10 },
+  { pattern: "BONIFICO STIPENDIO", categoryName: "Stipendio", priority: 10 },
+];

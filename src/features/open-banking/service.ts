@@ -17,6 +17,8 @@ import {
   IncompleteTransactionsError,
   OpenBankingConfigError,
 } from "./errors";
+import { classifyDescription } from "@/lib/finance/classification";
+import type { Category, ClassificationRule } from "@/types/database";
 
 function redirectUrl(): string {
   const url = process.env.OPEN_BANKING_REDIRECT_URL;
@@ -514,6 +516,16 @@ export async function syncConnection(options: {
   if (bankAccountsError || !bankAccounts?.length) {
     throw new Error("Nessun conto bancario disponibile per la sincronizzazione.");
   }
+
+  const [{ data: rulesData }, { data: categoriesData }] = await Promise.all([
+    supabase
+      .from("classification_rules")
+      .select("*, category:categories(*)")
+      .eq("user_id", userId),
+    supabase.from("categories").select("*").eq("user_id", userId),
+  ]);
+  const classificationRules = (rulesData ?? []) as ClassificationRule[];
+  const categories = (categoriesData ?? []) as Category[];
   const result: SyncResult = {
     connectionId: conn.id,
     imported: 0,
@@ -629,6 +641,14 @@ export async function syncConnection(options: {
           continue;
         }
 
+        const classifyText = [n.description, n.merchant].filter(Boolean).join(" ");
+        const matched =
+          n.type === "income" || n.type === "expense"
+            ? classifyDescription(classifyText, classificationRules, categories)
+            : null;
+        const categoryId =
+          matched && matched.type === n.type ? matched.id : null;
+
         const { data: inserted, error: insertError } = await supabase
           .from("transactions")
           .insert({
@@ -645,7 +665,8 @@ export async function syncConnection(options: {
             provider: n.provider,
             provider_transaction_id: n.providerTransactionId,
             fingerprint: n.fingerprint,
-            category_id: null,
+            category_id: categoryId,
+            category_source: categoryId ? "rule" : "bank",
           })
           .select("id")
           .single();
@@ -664,7 +685,7 @@ export async function syncConnection(options: {
             provider: n.provider,
             provider_transaction_id: n.providerTransactionId,
             fingerprint: n.fingerprint,
-            category_id: null,
+            category_id: categoryId,
             description: n.description,
             merchant: n.merchant,
             notes: n.notes,

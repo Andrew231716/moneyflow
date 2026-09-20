@@ -143,8 +143,15 @@ function stripDateWords(text: string): string {
     .trim();
 }
 
-const HELP_MESSAGE =
-  'Sono il Gestore finanziario locale (senza AI cloud). Esempi: "Metti 300 euro nel salvadanaio", "Crea obiettivo Matrimonio a 200 euro già raggiunto", "Quanto ho sul conto?", "Sincronizza Intesa", "Aggiungi spesa 35 euro ristorante ieri", "Budget rimanente", "Previsione fine mese".';
+const HELP_MESSAGE = `Sono il Gestore finanziario locale (senza AI cloud). Comandi utili:
+• Salvadanaio: "Metti 300 euro nel salvadanaio", "Preleva 50 dal salvadanaio"
+• Obiettivi: "Crea obiettivo Matrimonio a 200 euro già raggiunto", "Aggiungi 20 all'obiettivo Matrimonio"
+• Movimenti: "Aggiungi spesa 35 euro ristorante ieri", "Entrata 100 freelance"
+• Banca: "Sincronizza Intesa"
+• Query: "Quanto ho sul conto?", "Quanto ho speso questo mese", "Budget rimanente", "Previsione fine mese"
+• Altro: "Categorizza coop come alimentari", "Crea budget 200 alimentari"`;
+
+
 
 export function parseAssistantCommand(input: string): AssistantIntent {
   const text = input.trim();
@@ -625,6 +632,9 @@ export const ASSISTANT_EXAMPLES = [
   "Budget rimanente",
   "Previsione fine mese",
   "Quanto ho speso questo mese",
+  "Crea budget 200 alimentari",
+  "Categorizza esselunga come alimentari",
+  "Aiuto",
 ];
 
 export { HELP_MESSAGE };

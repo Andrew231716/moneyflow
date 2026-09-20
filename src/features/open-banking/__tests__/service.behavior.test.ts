@@ -59,6 +59,8 @@ function createSupabaseMock(state: {
   bankAccounts: Row[];
   accounts: Row[];
   transactions: Row[];
+  categories?: Row[];
+  classificationRules?: Row[];
   failUpdates?: Set<string>;
   failSelects?: Set<string>;
   failInserts?: Set<string>;
@@ -236,6 +238,18 @@ function createSupabaseMock(state: {
         if (!row) return { data: null, error: { message: "not found" } };
         Object.assign(row, payload);
         return { data: row, error: null };
+      }
+    }
+
+    if (table === "categories") {
+      if (mode === "select") {
+        return { data: state.categories ?? [], error: null };
+      }
+    }
+
+    if (table === "classification_rules") {
+      if (mode === "select") {
+        return { data: state.classificationRules ?? [], error: null };
       }
     }
 

@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import type { Category, ClassificationRule } from "@/types/database";
 import { createClient } from "@/lib/supabase/client";
 import { writeAudit } from "@/lib/data/mutations";
+import { DEFAULT_IT_CLASSIFICATION_RULES } from "@/lib/finance/default-classification-rules";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -78,6 +79,44 @@ export function SettingsPanel({
       if (error) throw error;
       toast.success("Regola creata");
       setRulePattern("");
+      router.refresh();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Errore");
+    }
+  }
+
+  async function seedItalianRules() {
+    try {
+      const supabase = createClient();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (!user) throw new Error("Non autenticato");
+      const byName = new Map(categories.map((c) => [c.name.toLowerCase(), c]));
+      const existing = new Set(rules.map((r) => r.pattern.toLowerCase()));
+      const rows = DEFAULT_IT_CLASSIFICATION_RULES.filter(
+        (r) => !existing.has(r.pattern.toLowerCase())
+      ).flatMap((r) => {
+        const cat = byName.get(r.categoryName.toLowerCase());
+        if (!cat) return [];
+        return [
+          {
+            user_id: user.id,
+            pattern: r.pattern,
+            match_type: "contains" as const,
+            category_id: cat.id,
+            priority: r.priority,
+            is_active: true,
+          },
+        ];
+      });
+      if (!rows.length) {
+        toast.message("Regole italiane già presenti (o categorie mancanti).");
+        return;
+      }
+      const { error } = await supabase.from("classification_rules").insert(rows);
+      if (error) throw error;
+      toast.success(`Aggiunte ${rows.length} regole merchant IT`);
       router.refresh();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Errore");
@@ -244,6 +283,20 @@ export function SettingsPanel({
           </div>
         </TabsContent>
         <TabsContent value="rules" className="space-y-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="text-sm text-muted-foreground">
+              Pattern su descrizione/merchant. In sync banca usiamo anche i default IT built-in.
+            </p>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              className="min-h-touch"
+              onClick={() => void seedItalianRules()}
+            >
+              Aggiungi regole IT
+            </Button>
+          </div>
           <div className="grid gap-2 sm:grid-cols-3">
             <div className="space-y-1">
               <Label>Pattern</Label>

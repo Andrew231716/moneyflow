@@ -26,6 +26,7 @@ import type {
   Transaction,
 } from "@/types/database";
 import { DemoSeedButton } from "@/features/analytics/demo-seed-button";
+import { DashboardSyncStatus } from "@/features/open-banking/components/dashboard-sync-status";
 import {
   StatCard,
   MoneyValue,
@@ -82,6 +83,12 @@ export function DashboardView(props: {
     isEmpty,
   } = props;
   const savingsBalance = savingsAccounts.reduce((s, a) => s + Number(a.balance), 0);
+  const liquidBalance = availability - savingsBalance;
+  const activeGoals = goals.filter((g) => g.status === "active");
+  const highlightGoals = [
+    ...activeGoals,
+    ...goals.filter((g) => g.status === "completed"),
+  ].slice(0, 4);
 
   const router = useRouter();
   const savingsDelta = summary.savings - previousSummary.savings;
@@ -119,7 +126,11 @@ export function DashboardView(props: {
         hero
         title="Disponibilità"
         value={availability}
-        hint="Tutti i conti"
+        hint={
+          savingsBalance > 0
+            ? `Liquidi ${formatCurrency(liquidBalance)} · Salvadanaio ${formatCurrency(savingsBalance)}`
+            : "Tutti i conti"
+        }
         trend={{
           label:
             previousSummary.savings === 0 && summary.savings === 0
@@ -130,6 +141,8 @@ export function DashboardView(props: {
       />
 
       <QuickActions actions={quickActions} />
+
+      <DashboardSyncStatus />
 
       <div className="grid gap-3 sm:grid-cols-3">
         <StatCard title="Entrate" value={summary.income} tone="success" hint="Mese corrente" />
@@ -211,7 +224,7 @@ export function DashboardView(props: {
         </ChartCard>
       </div>
 
-      {(savingsAccounts.length > 0 || goals.length > 0) && (
+      {(savingsAccounts.length > 0 || highlightGoals.length > 0) && (
         <section className="mf-surface p-5 space-y-4">
           <SectionHeader
             title="Salvadanaio"
@@ -230,9 +243,9 @@ export function DashboardView(props: {
               ))}
             </div>
           )}
-          {goals.length > 0 && (
+          {highlightGoals.length > 0 && (
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              {goals.slice(0, 3).map((g) => (
+              {highlightGoals.slice(0, 3).map((g) => (
                 <GoalCard key={g.id} goal={g} compact />
               ))}
             </div>
@@ -244,7 +257,12 @@ export function DashboardView(props: {
         <section className="mf-surface p-5 space-y-4">
           <SectionHeader title="Budget" description="Progresso mensile" href="/budgets" />
           {budgetProgress.length === 0 ? (
-            <p className="text-sm text-muted-foreground py-4">Nessun budget impostato</p>
+            <div className="space-y-3 py-2">
+              <p className="text-sm text-muted-foreground">Nessun budget impostato</p>
+              <Button asChild size="sm" variant="outline" className="min-h-touch">
+                <Link href="/budgets">Imposta dai top spese</Link>
+              </Button>
+            </div>
           ) : (
             <div className="grid gap-3 sm:grid-cols-2">
               {budgetProgress.slice(0, 4).map((b) => (
@@ -256,16 +274,13 @@ export function DashboardView(props: {
 
         <section className="mf-surface p-5 space-y-4">
           <SectionHeader title="Obiettivi" href="/goals" />
-          {goals.filter((g) => g.status === "active").length === 0 ? (
+          {activeGoals.length === 0 ? (
             <p className="text-sm text-muted-foreground py-4">Nessun obiettivo attivo</p>
           ) : (
-            <div className="grid gap-3">
-              {goals
-                .filter((g) => g.status === "active")
-                .slice(0, 3)
-                .map((g) => (
-                  <GoalCard key={g.id} goal={g} compact />
-                ))}
+            <div className="space-y-3">
+              {activeGoals.slice(0, 3).map((g) => (
+                <GoalCard key={g.id} goal={g} compact />
+              ))}
             </div>
           )}
         </section>
@@ -279,7 +294,17 @@ export function DashboardView(props: {
               className="border-0 shadow-none py-8"
               icon={<Wallet className="h-5 w-5" />}
               title="Nessun movimento"
-              description="Registra una spesa o un'entrata per iniziare."
+              description="Registra una spesa, importa CSV o sincronizza la banca collegata."
+              action={
+                <div className="flex flex-wrap justify-center gap-2">
+                  <Button asChild size="sm">
+                    <Link href="/transactions?new=expense">Nuova spesa</Link>
+                  </Button>
+                  <Button asChild size="sm" variant="outline">
+                    <Link href="/accounts">Sincronizza banca</Link>
+                  </Button>
+                </div>
+              }
             />
           ) : (
             <div className="divide-y divide-border/60 -mx-1">

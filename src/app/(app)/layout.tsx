@@ -4,6 +4,9 @@ import { AppShell } from "@/components/layout/app-shell";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
 import { EnvMissing } from "@/components/env-missing";
 
+/** Auth + live balances/movements must never be statically prerendered. */
+export const dynamic = "force-dynamic";
+
 export default async function AppLayout({
   children,
 }: {

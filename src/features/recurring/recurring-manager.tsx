@@ -39,6 +39,48 @@ const freqLabels: Record<RecurringFrequency, string> = {
   yearly: "Annuale",
 };
 
+const RECURRING_EXAMPLES: {
+  label: string;
+  description: string;
+  amount: string;
+  type: "income" | "expense";
+  frequency: RecurringFrequency;
+  categoryName?: string;
+}[] = [
+  {
+    label: "Affitto",
+    description: "Affitto",
+    amount: "800",
+    type: "expense",
+    frequency: "monthly",
+    categoryName: "Casa",
+  },
+  {
+    label: "Stipendio",
+    description: "Stipendio",
+    amount: "2000",
+    type: "income",
+    frequency: "monthly",
+    categoryName: "Stipendio",
+  },
+  {
+    label: "Netflix",
+    description: "Netflix",
+    amount: "13,99",
+    type: "expense",
+    frequency: "monthly",
+    categoryName: "Abbonamenti",
+  },
+  {
+    label: "Palestra",
+    description: "Abbonamento palestra",
+    amount: "40",
+    type: "expense",
+    frequency: "monthly",
+    categoryName: "Salute",
+  },
+];
+
 export function RecurringManager({
   items,
   accounts,
@@ -122,8 +164,43 @@ export function RecurringManager({
         <EmptyState
           icon={<Repeat className="h-6 w-6" />}
           title="Nessuna ricorrenza"
-          description="Aggiungi affitto, stipendio o abbonamenti."
-          action={<Button onClick={() => setOpen(true)}>Nuovo ricorrente</Button>}
+          description="Aggiungi affitto, stipendio o abbonamenti. Tocca un esempio per partire."
+          action={
+            <div className="flex flex-col items-center gap-3">
+              <div className="flex flex-wrap justify-center gap-2">
+                {RECURRING_EXAMPLES.map((ex) => (
+                  <Button
+                    key={ex.label}
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    className="min-h-touch"
+                    onClick={() => {
+                      const cat = categories.find(
+                        (c) =>
+                          c.type === ex.type &&
+                          c.name.toLowerCase() ===
+                            (ex.categoryName ?? "").toLowerCase()
+                      );
+                      setForm({
+                        description: ex.description,
+                        amount: ex.amount,
+                        type: ex.type,
+                        frequency: ex.frequency,
+                        account_id: accounts[0]?.id ?? "",
+                        category_id: cat?.id ?? "",
+                        next_due_date: new Date().toISOString().slice(0, 10),
+                      });
+                      setOpen(true);
+                    }}
+                  >
+                    {ex.label}
+                  </Button>
+                ))}
+              </div>
+              <Button onClick={() => setOpen(true)}>Nuovo ricorrente</Button>
+            </div>
+          }
         />
       ) : (
         <div className="space-y-2">

@@ -259,7 +259,17 @@ export function TransactionsManager({
           <EmptyState
             className="border-0 shadow-none rounded-none"
             title="Nessun movimento"
-            description="Prova a cambiare filtro o aggiungi un movimento."
+            description="Prova a cambiare filtro, sincronizza la banca da Conti, oppure aggiungi un movimento."
+            action={
+              <div className="flex flex-wrap justify-center gap-2">
+                <Button asChild size="sm" variant="outline">
+                  <Link href="/accounts">Vai ai Conti / Sync</Link>
+                </Button>
+                <Button size="sm" onClick={() => setOpen(true)}>
+                  Nuovo movimento
+                </Button>
+              </div>
+            }
           />
         )}
       </div>
@@ -272,7 +282,17 @@ export function TransactionsManager({
           <EmptyState
             className="border-0 shadow-none"
             title="Nessun movimento"
-            description="Aggiungi la prima spesa o entrata."
+            description="Sincronizza la banca o aggiungi la prima spesa."
+            action={
+              <div className="flex flex-wrap justify-center gap-2">
+                <Button asChild size="sm" variant="outline">
+                  <Link href="/accounts">Sync banca</Link>
+                </Button>
+                <Button size="sm" onClick={() => setOpen(true)}>
+                  Nuovo
+                </Button>
+              </div>
+            }
           />
         )}
       </div>

@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { Loader2, RefreshCw, Unplug, Link2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -49,6 +50,7 @@ function statusLabel(status: string, expired: boolean): string {
  * Sibling can render: <BankConnectionsPanel />
  */
 export function BankConnectionsPanel() {
+  const router = useRouter();
   const [connections, setConnections] = useState<ConnectionView[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -96,6 +98,7 @@ export function BankConnectionsPanel() {
       }
       if (data.ok) {
         toast.success(data.message ?? "Sincronizzazione completata.");
+        router.refresh();
         return;
       }
       if (data.partial) {
@@ -105,6 +108,7 @@ export function BankConnectionsPanel() {
           "Sincronizzazione parziale. Riprova tra poco per i movimenti restanti.";
         setError(msg);
         toast.message("Sincronizzazione parziale", { description: msg });
+        router.refresh();
         return;
       }
       const msg =

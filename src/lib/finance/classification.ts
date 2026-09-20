@@ -4,6 +4,7 @@ import type {
   MatchType,
   Transaction,
 } from "@/types/database";
+import { DEFAULT_IT_CLASSIFICATION_RULES } from "@/lib/finance/default-classification-rules";
 
 export function matchesPattern(
   text: string,
@@ -29,10 +30,28 @@ export function matchesPattern(
   }
 }
 
+function classifyWithBuiltInDefaults(
+  description: string,
+  categories: Category[]
+): Category | null {
+  const sorted = [...DEFAULT_IT_CLASSIFICATION_RULES].sort(
+    (a, b) => b.priority - a.priority
+  );
+  for (const rule of sorted) {
+    if (!matchesPattern(description, rule.pattern, "contains")) continue;
+    const cat = categories.find(
+      (c) => c.name.toLowerCase() === rule.categoryName.toLowerCase()
+    );
+    if (cat) return cat;
+  }
+  return null;
+}
+
 export function classifyDescription(
   description: string,
   rules: ClassificationRule[],
-  categories: Category[]
+  categories: Category[],
+  options?: { useBuiltInDefaults?: boolean }
 ): Category | null {
   const active = [...rules]
     .filter((r) => r.is_active)
@@ -47,7 +66,9 @@ export function classifyDescription(
       if (cat) return cat;
     }
   }
-  return null;
+
+  if (options?.useBuiltInDefaults === false) return null;
+  return classifyWithBuiltInDefaults(description, categories);
 }
 
 /** Never overwrite a manually set category (legacy flags + OB override array). */
