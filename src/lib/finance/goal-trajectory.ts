@@ -125,7 +125,6 @@ export function calcGoalTrajectory(
     avgMonthlyPace,
     neededMonthlyPace,
     projectedCompletionDate,
-    now,
   });
 
   return {
@@ -159,7 +158,6 @@ function buildStatusCopy(params: {
   avgMonthlyPace: number | null;
   neededMonthlyPace: number | null;
   projectedCompletionDate: string | null;
-  now: Date;
 }): Pick<GoalTrajectory, "status" | "statusLabel" | "forecastMessage"> {
   const {
     goal,
@@ -170,7 +168,6 @@ function buildStatusCopy(params: {
     avgMonthlyPace,
     neededMonthlyPace,
     projectedCompletionDate,
-    now,
   } = params;
 
   if (goal.settled) {
