@@ -44,7 +44,7 @@ export const mainNav: NavItem[] = [
     sidebar: true,
     mobileMore: true,
   },
-  { href: "/assistant", label: "Assistente", icon: Bot, sidebar: true, mobileMore: true },
+  { href: "/assistant", label: "Gestore", icon: Bot, sidebar: true, mobileMore: true },
   {
     href: "/settings",
     label: "Impostazioni",
