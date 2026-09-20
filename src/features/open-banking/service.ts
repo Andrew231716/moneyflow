@@ -13,7 +13,10 @@ import type {
   SyncResult,
 } from "./types";
 import { prioritizeInstitutions } from "./institutions";
-import { OpenBankingConfigError } from "./errors";
+import {
+  IncompleteTransactionsError,
+  OpenBankingConfigError,
+} from "./errors";
 
 function redirectUrl(): string {
   const url = process.env.OPEN_BANKING_REDIRECT_URL;
@@ -339,7 +342,11 @@ async function upsertBankAccountAndMoneyFlowAccount(options: {
   currency: string;
 }): Promise<BankAccountRow> {
   const { supabase, userId, connection } = options;
+  const ibanMasked = maskIban(options.iban);
+  const accountName = options.name || connection.institution_name;
+  const currency = options.currency || "EUR";
 
+  // Already linked on this connection (same provider account uid).
   const { data: existing } = await supabase
     .from("bank_accounts")
     .select("*")
@@ -351,24 +358,48 @@ async function upsertBankAccountAndMoneyFlowAccount(options: {
     return existing as BankAccountRow;
   }
 
-  const accountName = options.name || connection.institution_name;
+  // Reuse MoneyFlow account when the same real bank account was linked before
+  // (Enable Banking assigns a new account uid per session; match by IBAN mask
+  // and/or prior provider_account_id so "Collega banca" does not duplicate Conti).
+  let mfAccountId = await findReusableMoneyFlowAccountId({
+    supabase,
+    userId,
+    providerAccountId: options.providerAccountId,
+    ibanMasked,
+  });
 
-  const { data: mfAccount, error: accountError } = await supabase
-    .from("accounts")
-    .insert({
-      user_id: userId,
-      name: accountName,
-      type: "bank",
-      currency: options.currency || "EUR",
-      balance: 0,
-      icon: "landmark",
-      color: "#0d9488",
-    })
-    .select("id")
-    .single();
+  if (mfAccountId) {
+    const { error: reviveError } = await supabase
+      .from("accounts")
+      .update({
+        is_archived: false,
+        name: accountName,
+        currency,
+      })
+      .eq("id", mfAccountId)
+      .eq("user_id", userId);
+    if (reviveError) {
+      throw new Error("Impossibile aggiornare il conto MoneyFlow esistente.");
+    }
+  } else {
+    const { data: mfAccount, error: accountError } = await supabase
+      .from("accounts")
+      .insert({
+        user_id: userId,
+        name: accountName,
+        type: "bank",
+        currency,
+        balance: 0,
+        icon: "landmark",
+        color: "#0d9488",
+      })
+      .select("id")
+      .single();
 
-  if (accountError || !mfAccount) {
-    throw new Error("Impossibile creare il conto MoneyFlow.");
+    if (accountError || !mfAccount) {
+      throw new Error("Impossibile creare il conto MoneyFlow.");
+    }
+    mfAccountId = mfAccount.id as string;
   }
 
   const { data: bankAccount, error: baError } = await supabase
@@ -376,11 +407,11 @@ async function upsertBankAccountAndMoneyFlowAccount(options: {
     .insert({
       user_id: userId,
       connection_id: connection.id,
-      account_id: mfAccount.id,
+      account_id: mfAccountId,
       provider_account_id: options.providerAccountId,
-      iban_masked: maskIban(options.iban),
+      iban_masked: ibanMasked,
       name: accountName,
-      currency: options.currency || "EUR",
+      currency,
     })
     .select("*")
     .single();
@@ -390,6 +421,46 @@ async function upsertBankAccountAndMoneyFlowAccount(options: {
   }
 
   return bankAccount as BankAccountRow;
+}
+
+/**
+ * Find an existing MoneyFlow account for the same physical bank account.
+ * Prefer IBAN mask (stable across Enable Banking sessions); fall back to
+ * provider_account_id when the ASPSP reuses the same uid.
+ */
+async function findReusableMoneyFlowAccountId(options: {
+  supabase: SupabaseClient;
+  userId: string;
+  providerAccountId: string;
+  ibanMasked: string | null;
+}): Promise<string | null> {
+  const { supabase, userId, providerAccountId, ibanMasked } = options;
+
+  if (ibanMasked) {
+    const { data: byIban } = await supabase
+      .from("bank_accounts")
+      .select("account_id")
+      .eq("user_id", userId)
+      .eq("iban_masked", ibanMasked)
+      .not("account_id", "is", null)
+      .order("created_at", { ascending: false })
+      .limit(20);
+
+    const ibanHit = (byIban ?? []).find((r) => r.account_id);
+    if (ibanHit?.account_id) return ibanHit.account_id as string;
+  }
+
+  const { data: byProvider } = await supabase
+    .from("bank_accounts")
+    .select("account_id")
+    .eq("user_id", userId)
+    .eq("provider_account_id", providerAccountId)
+    .not("account_id", "is", null)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  return (byProvider?.account_id as string | null | undefined) ?? null;
 }
 
 export async function syncConnection(options: {
@@ -484,10 +555,29 @@ export async function syncConnection(options: {
 
       const dateFrom = new Date();
       dateFrom.setDate(dateFrom.getDate() - 90);
-      const txs = await provider.getTransactions({
-        accountId: ba.provider_account_id,
-        dateFrom: dateFrom.toISOString().slice(0, 10),
-      });
+      const dateFromIso = dateFrom.toISOString().slice(0, 10);
+
+      let txs;
+      try {
+        txs = await provider.getTransactions({
+          accountId: ba.provider_account_id,
+          dateFrom: dateFromIso,
+        });
+      } catch (err) {
+        if (
+          err &&
+          typeof err === "object" &&
+          "name" in err &&
+          (err as { name: string }).name === "IncompleteTransactionsError" &&
+          "transactions" in err
+        ) {
+          const incomplete = err as IncompleteTransactionsError;
+          txs = incomplete.transactions;
+          result.errors.push(incomplete.message);
+        } else {
+          throw err;
+        }
+      }
 
       const normalized = normalizeProviderTransactions(txs, {
         provider: conn.provider,
@@ -743,6 +833,47 @@ export async function disconnectConnection(options: {
 
   if (disconnectError) {
     throw new Error("Impossibile disconnettere la connessione bancaria.");
+  }
+
+  // Soft-archive MoneyFlow accounts that were only linked via this connection
+  // (do not touch accounts still used by another active/pending connection).
+  const { data: linked } = await supabase
+    .from("bank_accounts")
+    .select("account_id")
+    .eq("connection_id", connectionId)
+    .eq("user_id", userId)
+    .not("account_id", "is", null);
+
+  for (const row of linked ?? []) {
+    const accountId = row.account_id as string;
+    const { data: otherLinks } = await supabase
+      .from("bank_accounts")
+      .select("connection_id")
+      .eq("user_id", userId)
+      .eq("account_id", accountId)
+      .neq("connection_id", connectionId);
+
+    let hasOtherLive = false;
+    for (const link of otherLinks ?? []) {
+      const { data: otherConn } = await supabase
+        .from("bank_connections")
+        .select("status")
+        .eq("id", link.connection_id)
+        .eq("user_id", userId)
+        .maybeSingle();
+      if (otherConn && otherConn.status !== "disconnected") {
+        hasOtherLive = true;
+        break;
+      }
+    }
+
+    if (!hasOtherLive) {
+      await supabase
+        .from("accounts")
+        .update({ is_archived: true })
+        .eq("id", accountId)
+        .eq("user_id", userId);
+    }
   }
 }
 

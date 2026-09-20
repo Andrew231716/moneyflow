@@ -87,13 +87,13 @@ describe("Enable Banking booked-only transactions", () => {
     delete process.env.ENABLEBANKING_PRIVATE_KEY;
   });
 
-  it("requests BOOK status and drops non-booked rows", async () => {
+  it("filters to booked rows without sending transaction_status", async () => {
     process.env.ENABLEBANKING_APPLICATION_ID = "app-test-id";
     process.env.ENABLEBANKING_PRIVATE_KEY = TEST_PRIVATE_KEY;
 
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
-      expect(url).toContain("transaction_status=BOOK");
+      expect(url).not.toContain("transaction_status=");
       expect(url).toContain("/accounts/acc-1/transactions");
       return new Response(
         JSON.stringify({
@@ -138,7 +138,7 @@ describe("Enable Banking booked-only transactions", () => {
       calls += 1;
       const url = String(input);
       if (calls === 1) {
-        expect(url).toContain("transaction_status=BOOK");
+        expect(url).not.toContain("transaction_status=");
         expect(url).not.toContain("continuation_key=");
         return new Response(
           JSON.stringify({
@@ -157,7 +157,7 @@ describe("Enable Banking booked-only transactions", () => {
         );
       }
       expect(url).toContain("continuation_key=page-2");
-      expect(url).toContain("transaction_status=BOOK");
+      expect(url).not.toContain("transaction_status=");
       return new Response(
         JSON.stringify({
           code: 422,
@@ -170,12 +170,17 @@ describe("Enable Banking booked-only transactions", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     const provider = new EnableBankingProvider();
-    const txs = await provider.getTransactions({
-      accountId: "acc-1",
-      dateFrom: "2026-01-01",
+    const { IncompleteTransactionsError } = await import("../errors");
+    await expect(
+      provider.getTransactions({
+        accountId: "acc-1",
+        dateFrom: "2026-01-01",
+      })
+    ).rejects.toMatchObject({
+      name: "IncompleteTransactionsError",
+      transactions: [expect.objectContaining({ id: "b1" })],
     });
-    expect(txs).toHaveLength(1);
-    expect(txs[0].id).toBe("b1");
+    expect(IncompleteTransactionsError).toBeDefined();
   });
 
   it("maps session accounts from UUID strings or objects", async () => {

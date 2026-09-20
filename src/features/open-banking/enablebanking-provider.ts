@@ -1,6 +1,7 @@
 import { SignJWT, importPKCS8 } from "jose";
 import type { OpenBankingProvider } from "./provider";
 import {
+  IncompleteTransactionsError,
   OpenBankingConfigError,
   OpenBankingProviderError,
   friendlyProviderStatusMessage,
@@ -434,17 +435,29 @@ export class EnableBankingProvider implements OpenBankingProvider {
   async getTransactions(
     params: GetTransactionsParams
   ): Promise<ProviderTransaction[]> {
+    // Freeze query params once — continuation_key requires identical GET params
+    // on every page (Enable Banking FAQ). Do not send transaction_status: some
+    // ASPSPs (incl. Intesa) embed it in the continuation key inconsistently and
+    // return 422 WRONG_REQUEST_PARAMETERS on page 2+. Filter BOOK client-side.
     const q = new URLSearchParams();
     if (params.dateFrom) q.set("date_from", params.dateFrom);
     if (params.dateTo) q.set("date_to", params.dateTo);
-    // Only booked / accounted transactions (avoid pending duplicates).
-    q.set("transaction_status", "BOOK");
-    const qs = q.toString();
     const basePath = `/accounts/${encodeURIComponent(params.accountId)}/transactions`;
 
     const all: ProviderTransaction[] = [];
     let continuation: string | null = null;
+    let pages = 0;
+    const maxPages = 50;
+
     do {
+      pages += 1;
+      if (pages > maxPages) {
+        throw new IncompleteTransactionsError(
+          "Sincronizzazione movimenti incompleta: troppe pagine dal provider. Riprova.",
+          all
+        );
+      }
+
       const pageQuery = new URLSearchParams(q);
       if (continuation) pageQuery.set("continuation_key", continuation);
       const pagePath = `${basePath}?${pageQuery.toString()}`;
@@ -455,9 +468,11 @@ export class EnableBankingProvider implements OpenBankingProvider {
       try {
         data = await ebFetch(pagePath);
       } catch (err) {
-        // Continuation pages can 422 if ASPSP rejects param drift; keep pages already fetched.
         if (all.length > 0 && continuation) {
-          break;
+          throw new IncompleteTransactionsError(
+            "Sincronizzazione movimenti incompleta: il provider ha interrotto la paginazione. Riprova tra poco.",
+            all
+          );
         }
         throw err;
       }

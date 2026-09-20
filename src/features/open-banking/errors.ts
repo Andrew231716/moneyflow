@@ -16,6 +16,17 @@ export class OpenBankingProviderError extends Error {
   }
 }
 
+/** Partial page fetch succeeded but continuation failed — carry txs already retrieved. */
+export class IncompleteTransactionsError extends Error {
+  constructor(
+    message: string,
+    public readonly transactions: import("./types").ProviderTransaction[]
+  ) {
+    super(message);
+    this.name = "IncompleteTransactionsError";
+  }
+}
+
 export function friendlyProviderStatusMessage(
   status: number,
   providerCode?: string | null

@@ -110,10 +110,17 @@ function createSupabaseMock(state: {
       filters[`${col}__neq`] = val;
       return api;
     },
+    not(col: string, op: string, val?: unknown) {
+      if (op === "is" && (val === null || val === undefined)) {
+        filters[`${col}__notnull`] = true;
+      }
+      return api;
+    },
     order() {
       return api;
     },
-    limit() {
+    limit(n?: number) {
+      if (typeof n === "number") filters.__limit = n;
       return api;
     },
     single() {
@@ -130,8 +137,9 @@ function createSupabaseMock(state: {
   };
 
   function matchRows(rows: Row[]): Row[] {
-    return rows.filter((row) => {
+    let matched = rows.filter((row) => {
       for (const [k, v] of Object.entries(filters)) {
+        if (k === "__limit") continue;
         if (k.endsWith("__in")) {
           const col = k.replace(/__in$/, "");
           if (!(v as unknown[]).includes(row[col])) return false;
@@ -141,6 +149,9 @@ function createSupabaseMock(state: {
         } else if (k.endsWith("__neq")) {
           const col = k.replace(/__neq$/, "");
           if (row[col] === v) return false;
+        } else if (k.endsWith("__notnull")) {
+          const col = k.replace(/__notnull$/, "");
+          if (row[col] == null) return false;
         } else if (k === "metadata->>reference") {
           const meta = row.metadata as { reference?: string } | undefined;
           if (meta?.reference !== v) return false;
@@ -150,6 +161,9 @@ function createSupabaseMock(state: {
       }
       return true;
     });
+    const limit = filters.__limit;
+    if (typeof limit === "number") matched = matched.slice(0, limit);
+    return matched;
   }
 
   function run(): { data: unknown; error: { message: string; code?: string } | null } {
@@ -203,6 +217,13 @@ function createSupabaseMock(state: {
     }
 
     if (table === "accounts") {
+      if (mode === "select") {
+        const matched = matchRows(state.accounts);
+        if (preferMaybe || preferSingle) {
+          return { data: matched[0] ?? null, error: null };
+        }
+        return { data: matched, error: null };
+      }
       if (mode === "insert") {
         const row = { id: `acc-${state.accounts.length + 1}`, ...payload };
         state.accounts.push(row);
@@ -557,6 +578,128 @@ describe("syncConnection", () => {
     expect(result.errors.some((e) => e.includes("stato di sincronizzazione"))).toBe(
       true
     );
+  });
+
+  it("imports partial txs and records error on IncompleteTransactionsError", async () => {
+    const { IncompleteTransactionsError } = await import("../errors");
+    const active = baseConnection({ status: "active" });
+    const supabase = createSupabaseMock({
+      connections: [active],
+      bankAccounts: [
+        {
+          id: "ba-1",
+          connection_id: active.id,
+          user_id: "user-a",
+          provider_account_id: "pa-1",
+          account_id: "acc-1",
+          currency: "EUR",
+        },
+      ],
+      accounts: [{ id: "acc-1", user_id: "user-a", balance: 0 }],
+      transactions: [],
+    });
+    vi.mocked(mockProvider.getBalances).mockResolvedValue([
+      { amount: 50, currency: "EUR", type: "interimAvailable" },
+    ]);
+    vi.mocked(mockProvider.getTransactions).mockRejectedValue(
+      new IncompleteTransactionsError("paginazione incompleta", [
+        {
+          id: "partial-1",
+          bookingDate: "2026-03-01",
+          amount: -8,
+          currency: "EUR",
+          description: "Partial",
+        },
+      ])
+    );
+
+    const result = await syncConnection({
+      supabase,
+      userId: "user-a",
+      connectionId: active.id,
+    });
+    expect(result.imported).toBe(1);
+    expect(result.errors[0]).toMatch(/paginazione incompleta/);
+  });
+});
+
+describe("handleConnectionCallback dedup", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("reuses MoneyFlow account when same IBAN is already linked", async () => {
+    const prior = baseConnection({
+      id: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+      status: "disconnected",
+      provider_connection_id: "req-old",
+      metadata: { reference: "mf_old" },
+    });
+    const next = baseConnection({
+      id: "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
+      status: "pending",
+      provider_connection_id: "req-new",
+      metadata: { reference: "mf_ref_a" },
+    });
+    const state = {
+      connections: [prior, next],
+      bankAccounts: [
+        {
+          id: "ba-old",
+          connection_id: prior.id,
+          user_id: "user-a",
+          provider_account_id: "pa-old",
+          account_id: "acc-shared",
+          iban_masked: "IT60 **** **** 3456",
+          currency: "EUR",
+          created_at: "2026-01-01T00:00:00.000Z",
+        },
+      ] as Row[],
+      accounts: [
+        {
+          id: "acc-shared",
+          user_id: "user-a",
+          name: "Conto",
+          is_archived: false,
+          balance: 10,
+        },
+      ] as Row[],
+      transactions: [] as Row[],
+    };
+    const supabase = createSupabaseMock(state);
+
+    vi.mocked(mockProvider.getConnection).mockResolvedValue({
+      id: "req-new",
+      status: "LN",
+      institutionId: "INTESA_IT",
+      accounts: ["pa-new"],
+      agreement: null,
+    });
+    vi.mocked(mockProvider.getAccounts).mockResolvedValue([
+      {
+        id: "pa-new",
+        iban: "IT60X0542811101000000123456",
+        name: "Conto",
+        currency: "EUR",
+      },
+    ]);
+    vi.mocked(mockProvider.getBalances).mockResolvedValue([
+      { amount: 10, currency: "EUR", type: "interimAvailable" },
+    ]);
+    vi.mocked(mockProvider.getTransactions).mockResolvedValue([]);
+
+    await handleConnectionCallback({
+      supabase,
+      userId: "user-a",
+      ref: "mf_ref_a",
+    });
+
+    expect(state.accounts).toHaveLength(1);
+    expect(state.accounts[0].id).toBe("acc-shared");
+    const linked = state.bankAccounts.filter((b) => b.connection_id === next.id);
+    expect(linked).toHaveLength(1);
+    expect(linked[0].account_id).toBe("acc-shared");
+    expect(linked[0].provider_account_id).toBe("pa-new");
   });
 });
 

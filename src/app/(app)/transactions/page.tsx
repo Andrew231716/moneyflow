@@ -10,6 +10,8 @@ import {
 import { TransactionsManager } from "@/features/transactions/transactions-manager";
 import { LoadingState } from "@/components/money";
 
+export const dynamic = "force-dynamic";
+
 export default async function TransactionsPage() {
   if (!hasSupabaseEnv()) return null;
   const [transactions, accounts, categories, rules] = await Promise.all([
