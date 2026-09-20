@@ -230,7 +230,7 @@ export function BankConnectionsPanel() {
       {hasActiveBank && (
         <p className="text-xs text-muted-foreground rounded-xl border border-border/70 bg-muted/40 px-3 py-2">
           Ultimo aggiornamento: {formatSync(latestSync)}. Aggiornamento automatico attivo
-          (ogni poche ore).
+          (una volta al giorno).
         </p>
       )}
 
