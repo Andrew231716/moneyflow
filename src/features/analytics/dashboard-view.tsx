@@ -18,6 +18,7 @@ import { Wallet, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { formatCurrency } from "@/lib/utils";
 import type {
+  Account,
   BudgetProgress,
   Goal,
   Insight,
@@ -31,6 +32,7 @@ import {
   BudgetCard,
   TransactionItem,
   GoalCard,
+  AccountCard,
   InsightCard,
   EmptyState,
   SectionHeader,
@@ -53,6 +55,7 @@ export function DashboardView(props: {
   byCategory: { categoryId: string | null; name: string; color: string; total: number }[];
   budgetProgress: BudgetProgress[];
   goals: Goal[];
+  savingsAccounts: Account[];
   recent: Transaction[];
   forecast: {
     projectedExpense: number;
@@ -72,11 +75,13 @@ export function DashboardView(props: {
     byCategory,
     budgetProgress,
     goals,
+    savingsAccounts,
     recent,
     forecast,
     insights,
     isEmpty,
   } = props;
+  const savingsBalance = savingsAccounts.reduce((s, a) => s + Number(a.balance), 0);
 
   const router = useRouter();
   const savingsDelta = summary.savings - previousSummary.savings;
@@ -206,6 +211,35 @@ export function DashboardView(props: {
         </ChartCard>
       </div>
 
+      {(savingsAccounts.length > 0 || goals.length > 0) && (
+        <section className="mf-surface p-5 space-y-4">
+          <SectionHeader
+            title="Salvadanaio"
+            description={
+              savingsAccounts.length > 0
+                ? `${formatCurrency(savingsBalance)} disponibili`
+                : "Risparmi e obiettivi"
+            }
+            href="/accounts"
+            linkLabel="Conti"
+          />
+          {savingsAccounts.length > 0 && (
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {savingsAccounts.slice(0, 3).map((a) => (
+                <AccountCard key={a.id} account={a} />
+              ))}
+            </div>
+          )}
+          {goals.length > 0 && (
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {goals.slice(0, 3).map((g) => (
+                <GoalCard key={g.id} goal={g} compact />
+              ))}
+            </div>
+          )}
+        </section>
+      )}
+
       <div className="grid gap-4 lg:grid-cols-2">
         <section className="mf-surface p-5 space-y-4">
           <SectionHeader title="Budget" description="Progresso mensile" href="/budgets" />
@@ -222,13 +256,16 @@ export function DashboardView(props: {
 
         <section className="mf-surface p-5 space-y-4">
           <SectionHeader title="Obiettivi" href="/goals" />
-          {goals.length === 0 ? (
+          {goals.filter((g) => g.status === "active").length === 0 ? (
             <p className="text-sm text-muted-foreground py-4">Nessun obiettivo attivo</p>
           ) : (
             <div className="grid gap-3">
-              {goals.slice(0, 3).map((g) => (
-                <GoalCard key={g.id} goal={g} compact />
-              ))}
+              {goals
+                .filter((g) => g.status === "active")
+                .slice(0, 3)
+                .map((g) => (
+                  <GoalCard key={g.id} goal={g} compact />
+                ))}
             </div>
           )}
         </section>

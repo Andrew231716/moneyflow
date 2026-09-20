@@ -58,6 +58,9 @@ export function AccountsManager({ accounts }: { accounts: Account[] }) {
   }, [searchParams, router]);
 
   const total = accounts.reduce((s, a) => s + Number(a.balance), 0);
+  const savingsAccounts = accounts.filter((a) => a.type === "savings");
+  const otherAccounts = accounts.filter((a) => a.type !== "savings");
+  const savingsTotal = savingsAccounts.reduce((s, a) => s + Number(a.balance), 0);
 
   function openCreate() {
     setEditing(null);
@@ -190,16 +193,44 @@ export function AccountsManager({ accounts }: { accounts: Account[] }) {
           }
         />
       ) : (
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {accounts.map((a) => (
-            <AccountCard
-              key={a.id}
-              account={a}
-              onEdit={() => openEdit(a)}
-              onArchive={() => archive(a)}
-            />
-          ))}
-        </div>
+        <>
+          {otherAccounts.length > 0 && (
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {otherAccounts.map((a) => (
+                <AccountCard
+                  key={a.id}
+                  account={a}
+                  onEdit={() => openEdit(a)}
+                  onArchive={() => archive(a)}
+                />
+              ))}
+            </div>
+          )}
+
+          {savingsAccounts.length > 0 && (
+            <section className="space-y-3">
+              <div className="flex items-end justify-between gap-3">
+                <div>
+                  <h2 className="text-base font-semibold tracking-tight">Salvadanaio</h2>
+                  <p className="text-sm text-muted-foreground">
+                    Risparmi gestiti in MoneyFlow
+                  </p>
+                </div>
+                <MoneyValue amount={savingsTotal} size="sm" />
+              </div>
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                {savingsAccounts.map((a) => (
+                  <AccountCard
+                    key={a.id}
+                    account={a}
+                    onEdit={() => openEdit(a)}
+                    onArchive={() => archive(a)}
+                  />
+                ))}
+              </div>
+            </section>
+          )}
+        </>
       )}
 
       <BankConnectionsPanel />

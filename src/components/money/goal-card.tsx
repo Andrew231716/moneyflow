@@ -4,6 +4,7 @@ import { cn } from "@/lib/utils";
 import { calcGoalProgress } from "@/lib/finance/engine";
 import type { Goal } from "@/types/database";
 import { MoneyValue } from "./money-value";
+import { StatusBadge } from "./status-badge";
 
 export function GoalCard({
   goal,
@@ -17,11 +18,15 @@ export function GoalCard({
   compact?: boolean;
 }) {
   const p = calcGoalProgress(goal);
+  const reached = goal.status === "completed" || p.percent >= 100;
 
   return (
     <div className={cn("mf-surface p-4 space-y-3", className)}>
       <div className="flex items-start justify-between gap-2">
-        <p className="font-medium truncate">{goal.name}</p>
+        <div className="min-w-0 space-y-1.5">
+          <p className="font-medium truncate">{goal.name}</p>
+          {reached && <StatusBadge tone="success">Raggiunto</StatusBadge>}
+        </div>
         <span className="text-xs font-medium text-muted-foreground tabular-nums shrink-0">
           {p.percent.toFixed(0)}%
         </span>

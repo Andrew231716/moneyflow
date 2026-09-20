@@ -9,7 +9,7 @@ const typeLabels: Record<AccountType, string> = {
   bank: "Banca",
   card: "Carta",
   cash: "Contanti",
-  savings: "Risparmi",
+  savings: "Salvadanaio",
 };
 
 export function AccountCard({

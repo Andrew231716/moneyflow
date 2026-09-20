@@ -48,6 +48,10 @@ export default async function DashboardPage() {
   });
   const availability = calcTotalAvailability(accounts);
   const recent = transactions.filter((t) => t.type !== "transfer").slice(0, 8);
+  const savingsAccounts = accounts.filter((a) => a.type === "savings");
+  const salvadanaioGoals = goals
+    .filter((g) => g.status === "active" || g.status === "completed")
+    .slice(0, 4);
 
   return (
     <AppShell title="Home">
@@ -58,7 +62,8 @@ export default async function DashboardPage() {
         series={series}
         byCategory={byCategory}
         budgetProgress={budgetProgress}
-        goals={goals.filter((g) => g.status === "active").slice(0, 4)}
+        goals={salvadanaioGoals}
+        savingsAccounts={savingsAccounts}
         recent={recent}
         forecast={forecast}
         insights={insights}
