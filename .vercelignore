@@ -1,0 +1,8 @@
+.tools
+.git
+.cursor
+supabase/.temp
+*.pem
+node_modules
+.next
+.DS_Store
