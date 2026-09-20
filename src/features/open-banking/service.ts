@@ -1058,13 +1058,17 @@ export async function listUserBankConnections(options: {
     .map((c) => c.id);
 
   if (staleRateLimitIds.length > 0) {
-    void options.supabase
-      .from("bank_connections")
-      .update({ error_message: null })
-      .eq("user_id", options.userId)
-      .in("id", staleRateLimitIds)
-      .then(() => undefined)
-      .catch(() => undefined);
+    void (async () => {
+      try {
+        await options.supabase
+          .from("bank_connections")
+          .update({ error_message: null })
+          .eq("user_id", options.userId)
+          .in("id", staleRateLimitIds);
+      } catch {
+        // Best-effort cleanup of sticky rate-limit banners.
+      }
+    })();
   }
 
   return rows.map((c) => {
