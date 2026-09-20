@@ -8,13 +8,12 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import type { BankConnectionRow } from "@/features/open-banking/types";
+import { RATE_LIMIT_RETRY_AFTER_SECONDS } from "@/features/open-banking/errors";
 
 type Conn = Pick<
   BankConnectionRow,
   "id" | "institution_name" | "status" | "last_synced_at" | "error_message"
 >;
-
-const RATE_LIMIT_COOLDOWN_SEC = 300;
 
 function formatSync(iso: string | null): string {
   if (!iso) return "Mai";
@@ -30,7 +29,14 @@ function formatSync(iso: string | null): string {
 
 function looksLikeRateLimit(msg: string | null | undefined): boolean {
   if (!msg) return false;
-  return /troppe richieste|già scaricati sono al sicuro|riprova tra qualche/i.test(msg);
+  return /troppe richieste|già scaricati sono al sicuro|riprova tra (qualche|poco)|banca momentaneamente occupata|prossima sync/i.test(
+    msg
+  );
+}
+
+function formatCooldownShort(seconds: number): string {
+  if (seconds >= 60) return `${Math.ceil(seconds / 60)}m`;
+  return `${seconds}s`;
 }
 
 /** Compact bank sync status for the Home dashboard. */
@@ -67,13 +73,19 @@ export function DashboardSyncStatus() {
     return () => window.clearInterval(id);
   }, [cooldownUntil]);
 
+  useEffect(() => {
+    if (!lastMessage || !looksLikeRateLimit(lastMessage)) return;
+    const stillCooling = Object.values(cooldownUntil).some((t) => t > now);
+    if (!stillCooling) setLastMessage(null);
+  }, [cooldownUntil, now, lastMessage]);
+
   function remainingCooldown(connectionId: string): number {
     const until = cooldownUntil[connectionId] ?? 0;
     return Math.max(0, Math.ceil((until - now) / 1000));
   }
 
   function startCooldown(connectionId: string, seconds: number) {
-    const sec = seconds > 0 ? seconds : RATE_LIMIT_COOLDOWN_SEC;
+    const sec = seconds > 0 ? seconds : RATE_LIMIT_RETRY_AFTER_SECONDS;
     setCooldownUntil((prev) => ({
       ...prev,
       [connectionId]: Date.now() + sec * 1000,
@@ -97,7 +109,7 @@ export function DashboardSyncStatus() {
         const msg = data.error ?? data.message ?? "Sincronizzazione non riuscita.";
         setLastMessage(msg);
         if (looksLikeRateLimit(msg) || data.rate_limited) {
-          startCooldown(connectionId, data.retry_after_seconds ?? RATE_LIMIT_COOLDOWN_SEC);
+          startCooldown(connectionId, data.retry_after_seconds ?? RATE_LIMIT_RETRY_AFTER_SECONDS);
           toast.message("Banca momentaneamente occupata", { description: msg });
         } else {
           toast.error(msg);
@@ -108,9 +120,9 @@ export function DashboardSyncStatus() {
       if (data.rate_limited || looksLikeRateLimit(data.message)) {
         const msg =
           data.message ??
-          "Riprova tra qualche minuto — i movimenti già scaricati sono al sicuro";
+          "Banca momentaneamente occupata — i movimenti già scaricati sono al sicuro. Riprova tra poco.";
         setLastMessage(msg);
-        startCooldown(connectionId, data.retry_after_seconds ?? RATE_LIMIT_COOLDOWN_SEC);
+        startCooldown(connectionId, data.retry_after_seconds ?? RATE_LIMIT_RETRY_AFTER_SECONDS);
         toast.message("Sincronizzazione in pausa", { description: msg });
         router.refresh();
         return;
@@ -130,7 +142,7 @@ export function DashboardSyncStatus() {
           "Sincronizzazione parziale. Riprova tra poco.";
         setLastMessage(msg);
         if (looksLikeRateLimit(msg)) {
-          startCooldown(connectionId, data.retry_after_seconds ?? RATE_LIMIT_COOLDOWN_SEC);
+          startCooldown(connectionId, data.retry_after_seconds ?? RATE_LIMIT_RETRY_AFTER_SECONDS);
         }
         toast.message("Sincronizzazione parziale", { description: msg });
         router.refresh();
@@ -184,13 +196,27 @@ export function DashboardSyncStatus() {
         </Button>
       </div>
       {lastMessage && (
-        <p className="text-xs text-warning leading-relaxed">{lastMessage}</p>
+        <p
+          className={
+            looksLikeRateLimit(lastMessage)
+              ? "text-xs text-amber-800 dark:text-amber-200 leading-relaxed"
+              : "text-xs text-warning leading-relaxed"
+          }
+        >
+          {lastMessage}
+        </p>
       )}
       <ul className="space-y-2">
         {connections.map((c) => {
           const cooldown = remainingCooldown(c.id);
           const rateLimited =
             cooldown > 0 || looksLikeRateLimit(c.error_message);
+          const softDbHint =
+            c.error_message && looksLikeRateLimit(c.error_message)
+              ? c.error_message
+              : c.error_message && !looksLikeRateLimit(c.error_message)
+                ? c.error_message
+                : null;
           return (
             <li
               key={c.id}
@@ -208,10 +234,18 @@ export function DashboardSyncStatus() {
                 </div>
                 <p className="text-xs text-muted-foreground">
                   Ultima sync: {formatSync(c.last_synced_at)}
-                  {cooldown > 0 ? ` · attesa ${cooldown}s` : ""}
+                  {cooldown > 0 ? ` · prossima tra ${formatCooldownShort(cooldown)}` : ""}
                 </p>
-                {c.error_message && (
-                  <p className="text-xs text-warning line-clamp-2">{c.error_message}</p>
+                {softDbHint && cooldown === 0 && (
+                  <p
+                    className={
+                      looksLikeRateLimit(softDbHint)
+                        ? "text-xs text-amber-800 dark:text-amber-200 line-clamp-2"
+                        : "text-xs text-warning line-clamp-2"
+                    }
+                  >
+                    {softDbHint}
+                  </p>
                 )}
               </div>
               {c.status === "active" && (
@@ -228,7 +262,11 @@ export function DashboardSyncStatus() {
                   ) : (
                     <RefreshCw aria-hidden />
                   )}
-                  {cooldown > 0 ? `${cooldown}s` : rateLimited ? "Riprova" : "Sync"}
+                  {cooldown > 0
+                    ? formatCooldownShort(cooldown)
+                    : rateLimited
+                      ? "Riprova"
+                      : "Sync"}
                 </Button>
               )}
             </li>

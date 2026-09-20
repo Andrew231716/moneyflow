@@ -18,7 +18,10 @@ export class OpenBankingProviderError extends Error {
 
 /** Partial page fetch succeeded but continuation failed — carry txs already retrieved. */
 export const RATE_LIMIT_PARTIAL_MESSAGE =
-  "Riprova tra qualche minuto — i movimenti già scaricati sono al sicuro";
+  "Banca momentaneamente occupata — i movimenti già scaricati sono al sicuro. Riprova tra poco.";
+
+/** UI cooldown after ASPSP rate limit (seconds). Soft pause, not a hard outage. */
+export const RATE_LIMIT_RETRY_AFTER_SECONDS = 90;
 
 export class IncompleteTransactionsError extends Error {
   constructor(

@@ -4,15 +4,12 @@ import {
   OpenBankingHttpError,
   requireUser,
 } from "@/features/open-banking/auth";
-import { RATE_LIMIT_PARTIAL_MESSAGE } from "@/features/open-banking/errors";
+import { RATE_LIMIT_PARTIAL_MESSAGE, RATE_LIMIT_RETRY_AFTER_SECONDS } from "@/features/open-banking/errors";
 import { syncConnection } from "@/features/open-banking/service";
 
 export const dynamic = "force-dynamic";
 /** Allow multi-page Intesa sync with rate-limit backoff (Hobby may still cap lower). */
 export const maxDuration = 60;
-
-/** UI cooldown hint after ASPSP rate limit (seconds). */
-const RATE_LIMIT_RETRY_AFTER_SECONDS = 300;
 
 /**
  * POST /api/open-banking/sync

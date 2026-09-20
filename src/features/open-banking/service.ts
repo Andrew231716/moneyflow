@@ -36,7 +36,7 @@ function sleep(ms: number): Promise<void> {
 
 export function looksLikeRateLimitMessage(msg: string | null | undefined): boolean {
   if (!msg) return false;
-  return /troppe richieste|rate.?limit|già scaricati sono al sicuro|riprova tra qualche/i.test(
+  return /troppe richieste|rate.?limit|già scaricati sono al sicuro|riprova tra (qualche|poco)|banca momentaneamente occupata|prossima sync/i.test(
     msg
   );
 }
@@ -860,8 +860,11 @@ export async function syncConnection(options: {
 
   const progressMade =
     result.imported > 0 || result.updated > 0 || result.errors.length === 0;
+  // Rate-limit after a useful sync is ephemeral UI state — do not sticky-red the Conti page.
   const warning = result.rateLimited
-    ? RATE_LIMIT_PARTIAL_MESSAGE
+    ? progressMade
+      ? null
+      : RATE_LIMIT_PARTIAL_MESSAGE
     : result.errors.length
       ? result.errors[0]
       : null;
@@ -1040,20 +1043,43 @@ export async function listUserBankConnections(options: {
     throw new Error("Impossibile caricare le connessioni bancarie.");
   }
 
-  return ((data ?? []) as Array<BankConnectionRow & { bank_accounts: BankAccountRow[] }>).map(
-    (c) => {
-      const consent_expired =
-        c.status === "expired" ||
-        (!!c.consent_expires_at &&
-          new Date(c.consent_expires_at).getTime() < Date.now());
-      const consent_message = consent_expired
-        ? /intesa/i.test(c.institution_name)
-          ? "Il consenso Open Banking di Intesa Sanpaolo è scaduto. Ricollega il conto per continuare la sincronizzazione."
-          : `Il consenso Open Banking di ${c.institution_name} è scaduto. Ricollega il conto.`
-        : null;
-      return { ...c, consent_expired, consent_message };
-    }
-  );
+  const rows = (data ?? []) as Array<
+    BankConnectionRow & { bank_accounts: BankAccountRow[] }
+  >;
+
+  // Clear sticky rate-limit banners once a recent sync already landed data.
+  const staleRateLimitIds = rows
+    .filter((c) => {
+      if (!looksLikeRateLimitMessage(c.error_message)) return false;
+      if (!c.last_synced_at) return false;
+      const ageMs = Date.now() - new Date(c.last_synced_at).getTime();
+      return Number.isFinite(ageMs) && ageMs >= 0 && ageMs < 24 * 60 * 60 * 1000;
+    })
+    .map((c) => c.id);
+
+  if (staleRateLimitIds.length > 0) {
+    void options.supabase
+      .from("bank_connections")
+      .update({ error_message: null })
+      .eq("user_id", options.userId)
+      .in("id", staleRateLimitIds)
+      .then(() => undefined)
+      .catch(() => undefined);
+  }
+
+  return rows.map((c) => {
+    const consent_expired =
+      c.status === "expired" ||
+      (!!c.consent_expires_at &&
+        new Date(c.consent_expires_at).getTime() < Date.now());
+    const consent_message = consent_expired
+      ? /intesa/i.test(c.institution_name)
+        ? "Il consenso Open Banking di Intesa Sanpaolo è scaduto. Ricollega il conto per continuare la sincronizzazione."
+        : `Il consenso Open Banking di ${c.institution_name} è scaduto. Ricollega il conto.`
+      : null;
+    const error_message = staleRateLimitIds.includes(c.id) ? null : c.error_message;
+    return { ...c, error_message, consent_expired, consent_message };
+  });
 }
 
 export async function disconnectConnection(options: {

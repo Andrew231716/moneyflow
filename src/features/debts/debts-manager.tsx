@@ -204,13 +204,21 @@ export function DebtsManager({ debts }: { debts: Debt[] }) {
           <Label htmlFor="debt-name">Nome</Label>
           <Input
             id="debt-name"
+            name="mf-debt-label"
             value={form.name}
             onChange={(e) => setForm({ ...form, name: e.target.value })}
             placeholder="Es. Prestito mamma"
+            autoComplete="off"
+            autoCorrect="off"
+            autoCapitalize="sentences"
+            spellCheck={false}
+            enterKeyHint="next"
           />
         </div>
         <AmountInput
+          id="debt-amount"
           label="Importo"
+          name="mf-debt-amount"
           value={form.amount}
           onChange={(amount) => setForm({ ...form, amount })}
         />
@@ -218,9 +226,11 @@ export function DebtsManager({ debts }: { debts: Debt[] }) {
           <Label htmlFor="debt-notes">Note (opzionale)</Label>
           <Input
             id="debt-notes"
+            name="mf-debt-notes"
             value={form.notes}
             onChange={(e) => setForm({ ...form, notes: e.target.value })}
             placeholder="Scadenza, dettaglio…"
+            autoComplete="off"
           />
         </div>
       </ResponsiveFormShell>

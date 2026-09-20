@@ -27,7 +27,7 @@ export {
   confirmInternalTransfer,
   resolveSyncDateFrom,
 } from "./service";
-export { RATE_LIMIT_PARTIAL_MESSAGE } from "./errors";
+export { RATE_LIMIT_PARTIAL_MESSAGE, RATE_LIMIT_RETRY_AFTER_SECONDS } from "./errors";
 export {
   normalizeInstitutionName,
   isIntesaSanpaolo,

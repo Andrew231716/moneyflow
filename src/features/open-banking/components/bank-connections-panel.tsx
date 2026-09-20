@@ -3,19 +3,18 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Loader2, RefreshCw, Unplug, Link2 } from "lucide-react";
+import { Loader2, RefreshCw, Unplug, Link2, X } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import type { BankAccountRow, BankConnectionRow } from "@/features/open-banking/types";
+import { RATE_LIMIT_RETRY_AFTER_SECONDS } from "@/features/open-banking/errors";
 
 type ConnectionView = BankConnectionRow & {
   bank_accounts: BankAccountRow[];
   consent_expired: boolean;
   consent_message: string | null;
 };
-
-const RATE_LIMIT_COOLDOWN_SEC = 300;
 
 function formatSync(iso: string | null): string {
   if (!iso) return "Mai sincronizzato";
@@ -49,7 +48,17 @@ function statusLabel(status: string, expired: boolean): string {
 
 function looksLikeRateLimit(msg: string | null | undefined): boolean {
   if (!msg) return false;
-  return /troppe richieste|già scaricati sono al sicuro|riprova tra qualche/i.test(msg);
+  return /troppe richieste|già scaricati sono al sicuro|riprova tra (qualche|poco)|banca momentaneamente occupata|prossima sync/i.test(
+    msg
+  );
+}
+
+function formatCooldownLabel(seconds: number): string {
+  if (seconds >= 60) {
+    const m = Math.ceil(seconds / 60);
+    return `Prossima sync tra ${m} min`;
+  }
+  return `Prossima sync tra ${seconds}s`;
 }
 
 /**
@@ -60,6 +69,7 @@ export function BankConnectionsPanel() {
   const [connections, setConnections] = useState<ConnectionView[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [cooldownUntil, setCooldownUntil] = useState<Record<string, number>>({});
   const [now, setNow] = useState(() => Date.now());
@@ -94,13 +104,22 @@ export function BankConnectionsPanel() {
     return () => window.clearInterval(id);
   }, [cooldownUntil]);
 
+  // Drop soft notice when all cooldowns expire.
+  useEffect(() => {
+    if (!notice) return;
+    const stillCooling = Object.values(cooldownUntil).some((t) => t > now);
+    if (!stillCooling && looksLikeRateLimit(notice)) {
+      setNotice(null);
+    }
+  }, [cooldownUntil, now, notice]);
+
   function remainingCooldown(connectionId: string): number {
     const until = cooldownUntil[connectionId] ?? 0;
     return Math.max(0, Math.ceil((until - now) / 1000));
   }
 
   function startCooldown(connectionId: string, seconds: number) {
-    const sec = seconds > 0 ? seconds : RATE_LIMIT_COOLDOWN_SEC;
+    const sec = seconds > 0 ? seconds : RATE_LIMIT_RETRY_AFTER_SECONDS;
     setCooldownUntil((prev) => ({
       ...prev,
       [connectionId]: Date.now() + sec * 1000,
@@ -124,11 +143,12 @@ export function BankConnectionsPanel() {
       await refresh();
       if (!res.ok) {
         const msg = data.error ?? data.message ?? "Sincronizzazione non riuscita.";
-        setError(msg);
         if (looksLikeRateLimit(msg) || data.rate_limited) {
-          startCooldown(connectionId, data.retry_after_seconds ?? RATE_LIMIT_COOLDOWN_SEC);
+          startCooldown(connectionId, data.retry_after_seconds ?? RATE_LIMIT_RETRY_AFTER_SECONDS);
+          setNotice(msg);
           toast.message("Banca momentaneamente occupata", { description: msg });
         } else {
+          setError(msg);
           toast.error(msg);
         }
         return;
@@ -136,14 +156,15 @@ export function BankConnectionsPanel() {
       if (data.rate_limited || looksLikeRateLimit(data.message)) {
         const msg =
           data.message ??
-          "Riprova tra qualche minuto — i movimenti già scaricati sono al sicuro";
-        setError(msg);
-        startCooldown(connectionId, data.retry_after_seconds ?? RATE_LIMIT_COOLDOWN_SEC);
+          "Banca momentaneamente occupata — i movimenti già scaricati sono al sicuro. Riprova tra poco.";
+        setNotice(msg);
+        startCooldown(connectionId, data.retry_after_seconds ?? RATE_LIMIT_RETRY_AFTER_SECONDS);
         toast.message("Sincronizzazione in pausa", { description: msg });
         router.refresh();
         return;
       }
       if (data.ok) {
+        setNotice(null);
         toast.success(data.message ?? "Sincronizzazione completata.");
         router.refresh();
         return;
@@ -153,9 +174,11 @@ export function BankConnectionsPanel() {
           data.message ??
           data.errors?.[0] ??
           "Sincronizzazione parziale. Riprova tra poco per i movimenti restanti.";
-        setError(msg);
         if (looksLikeRateLimit(msg)) {
-          startCooldown(connectionId, data.retry_after_seconds ?? RATE_LIMIT_COOLDOWN_SEC);
+          setNotice(msg);
+          startCooldown(connectionId, data.retry_after_seconds ?? RATE_LIMIT_RETRY_AFTER_SECONDS);
+        } else {
+          setNotice(msg);
         }
         toast.message("Sincronizzazione parziale", { description: msg });
         router.refresh();
@@ -243,6 +266,23 @@ export function BankConnectionsPanel() {
         </p>
       )}
 
+      {notice && !error && (
+        <div
+          className="flex items-start gap-2 text-sm text-amber-900 dark:text-amber-100 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2"
+          role="status"
+        >
+          <p className="flex-1 min-w-0 leading-relaxed">{notice}</p>
+          <button
+            type="button"
+            className="shrink-0 rounded-md p-1 text-amber-800/70 hover:bg-amber-500/15 dark:text-amber-100/70"
+            aria-label="Chiudi avviso"
+            onClick={() => setNotice(null)}
+          >
+            <X className="size-4" />
+          </button>
+        </div>
+      )}
+
       {hasIntesa && (
         <p className="text-xs text-muted-foreground rounded-xl border border-border/70 bg-muted/40 px-3 py-2">
           I salvadanai (XME Salvadanaio) e gli obiettivi dell&apos;app Intesa Sanpaolo non
@@ -272,6 +312,16 @@ export function BankConnectionsPanel() {
           {connections.map((c) => {
             const cool = remainingCooldown(c.id);
             const syncBusy = busyId === c.id;
+            const rateLimitHint =
+              cool > 0
+                ? formatCooldownLabel(cool)
+                : c.error_message && looksLikeRateLimit(c.error_message)
+                  ? c.error_message
+                  : null;
+            const hardError =
+              c.error_message && !looksLikeRateLimit(c.error_message)
+                ? c.error_message
+                : null;
             return (
               <li
                 key={c.id}
@@ -297,8 +347,11 @@ export function BankConnectionsPanel() {
                   <p className="text-xs text-muted-foreground">
                     Ultimo aggiornamento: {formatSync(c.last_synced_at)}
                   </p>
-                  {c.error_message && !c.consent_expired && (
-                    <p className="text-xs text-warning">{c.error_message}</p>
+                  {rateLimitHint && (
+                    <p className="text-xs text-amber-800 dark:text-amber-200">{rateLimitHint}</p>
+                  )}
+                  {hardError && !c.consent_expired && (
+                    <p className="text-xs text-warning">{hardError}</p>
                   )}
                   {c.consent_message && (
                     <p className="text-xs text-warning">{c.consent_message}</p>
@@ -337,7 +390,7 @@ export function BankConnectionsPanel() {
                         ) : (
                           <RefreshCw />
                         )}
-                        {cool > 0 ? `Attendi ${cool}s` : "Sincronizza"}
+                        {cool > 0 ? formatCooldownLabel(cool) : "Sincronizza"}
                       </Button>
                       <Button
                         size="sm"
