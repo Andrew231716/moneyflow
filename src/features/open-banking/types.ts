@@ -4,6 +4,7 @@
  */
 
 export type OpenBankingProviderId =
+  | "enablebanking"
   | "gocardless"
   | "tink"
   | "truelayer"

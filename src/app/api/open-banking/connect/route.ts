@@ -4,6 +4,7 @@ import {
   OpenBankingHttpError,
   requireUser,
 } from "@/features/open-banking/auth";
+import { resolveDefaultProviderId } from "@/features/open-banking/factory";
 import { startBankConnection } from "@/features/open-banking/service";
 
 export const dynamic = "force-dynamic";
@@ -35,6 +36,7 @@ export async function POST(request: NextRequest) {
       institutionId: body.institution_id,
       institutionName: body.institution_name,
       institutionLogo: body.institution_logo,
+      providerId: resolveDefaultProviderId(),
     });
 
     return NextResponse.json({

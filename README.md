@@ -69,8 +69,11 @@ Vedi `.env.example`:
 | `NEXT_PUBLIC_SUPABASE_URL` | Supabase project URL |
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Anon key (mai service_role nel frontend) |
 | `NEXT_PUBLIC_ENABLE_DEMO_SEED` | Mostra seed demo |
-| `GOCARDLESS_SECRET_ID` / `GOCARDLESS_SECRET_KEY` | Solo server, Open Banking |
-| `OPEN_BANKING_REDIRECT_URL` | Callback OAuth banca |
+| `OPEN_BANKING_PROVIDER` | `enablebanking` (default) o `gocardless` |
+| `ENABLEBANKING_APPLICATION_ID` | Solo server — Application ID Enable Banking |
+| `ENABLEBANKING_PRIVATE_KEY` | Solo server — chiave privata PEM (mai in git) |
+| `GOCARDLESS_SECRET_ID` / `GOCARDLESS_SECRET_KEY` | Legacy, solo se `OPEN_BANKING_PROVIDER=gocardless` |
+| `OPEN_BANKING_REDIRECT_URL` | Callback AIS (whitelist nel Control Panel) |
 
 ## Deploy su Vercel (Hobby / free)
 
@@ -89,11 +92,13 @@ npx vercel link
 npx vercel env add NEXT_PUBLIC_SUPABASE_URL
 npx vercel env add NEXT_PUBLIC_SUPABASE_ANON_KEY
 npx vercel env add NEXT_PUBLIC_ENABLE_DEMO_SEED   # opzionale
-npx vercel env add GOCARDLESS_SECRET_ID           # se usi Open Banking
-npx vercel env add GOCARDLESS_SECRET_KEY
+npx vercel env add OPEN_BANKING_PROVIDER          # enablebanking
+npx vercel env add ENABLEBANKING_APPLICATION_ID
+npx vercel env add ENABLEBANKING_PRIVATE_KEY      # PEM (newline o \n)
 # Dopo il primo deploy, aggiorna il callback con l’URL reale:
 npx vercel env add OPEN_BANKING_REDIRECT_URL
-# valore: https://<tuo-progetto>.vercel.app/api/open-banking/callback
+# valore: https://moneyflow-ecru.vercel.app/api/open-banking/callback
+# Whitelist lo stesso URL in Enable Banking Control Panel → Redirect URLs
 
 # 4. Deploy produzione
 npx vercel --prod
@@ -113,16 +118,19 @@ npx vercel --prod
 | `NEXT_PUBLIC_SUPABASE_URL` | Production, Preview | Obbligatoria |
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Production, Preview | Obbligatoria (mai `service_role`) |
 | `NEXT_PUBLIC_ENABLE_DEMO_SEED` | opzionale | `true` / `false` |
-| `GOCARDLESS_SECRET_ID` | Production, Preview | Solo se Open Banking |
-| `GOCARDLESS_SECRET_KEY` | Production, Preview | Solo se Open Banking |
-| `OPEN_BANKING_REDIRECT_URL` | Production | `https://<deployment>/api/open-banking/callback` |
+| `OPEN_BANKING_PROVIDER` | Production, Preview | `enablebanking` (consigliato) |
+| `ENABLEBANKING_APPLICATION_ID` | Production, Preview | Da Enable Banking Control Panel |
+| `ENABLEBANKING_PRIVATE_KEY` | Production, Preview | PEM RSA — non committare |
+| `OPEN_BANKING_REDIRECT_URL` | Production | `https://moneyflow-ecru.vercel.app/api/open-banking/callback` |
+| `GOCARDLESS_*` | opzionale | Solo se `OPEN_BANKING_PROVIDER=gocardless` |
 
 Dopo il deploy, in **Supabase → Authentication → URL Configuration**:
 
-- **Site URL**: `https://<tuo-progetto>.vercel.app`
-- **Redirect URLs**: aggiungi `https://<tuo-progetto>.vercel.app/**` (e l’eventuale dominio custom)
+- **Site URL**: `https://moneyflow-ecru.vercel.app`
+- **Redirect URLs**: aggiungi `https://moneyflow-ecru.vercel.app/**` (e l’eventuale dominio custom)
 
-In **GoCardless** (se usato), imposta lo stesso callback usato in `OPEN_BANKING_REDIRECT_URL`.
+In **Enable Banking Control Panel**, whitelist lo stesso callback di `OPEN_BANKING_REDIRECT_URL`
+(`https://moneyflow-ecru.vercel.app/api/open-banking/callback`).
 
 ### Verifica
 

@@ -1,7 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { maskIban, mapRequisitionStatus, OpenBankingHttpError } from "./auth";
 import { buildDedupIndexes, decideDedup } from "./deduplication";
-import { getOpenBankingProvider } from "./factory";
+import { getOpenBankingProvider, resolveDefaultProviderId } from "./factory";
 import { detectInternalTransfers } from "./internal-transfer-detector";
 import { normalizeProviderTransactions } from "./normalizer";
 import type {
@@ -13,9 +13,7 @@ import type {
   SyncResult,
 } from "./types";
 import { prioritizeInstitutions } from "./institutions";
-import { OpenBankingConfigError } from "./gocardless-provider";
-
-const DEFAULT_PROVIDER: OpenBankingProviderId = "gocardless";
+import { OpenBankingConfigError } from "./errors";
 
 function redirectUrl(): string {
   const url = process.env.OPEN_BANKING_REDIRECT_URL;
@@ -42,7 +40,7 @@ export async function listInstitutions(options: {
   search?: string;
   providerId?: OpenBankingProviderId;
 }): Promise<Institution[]> {
-  const provider = getOpenBankingProvider(options.providerId ?? DEFAULT_PROVIDER);
+  const provider = getOpenBankingProvider(options.providerId ?? resolveDefaultProviderId());
   const country = (options.country ?? "IT").toUpperCase();
   const institutions = await provider.getInstitutions(country);
   return prioritizeInstitutions(institutions, options.search);
@@ -56,7 +54,7 @@ export async function startBankConnection(options: {
   institutionLogo?: string | null;
   providerId?: OpenBankingProviderId;
 }): Promise<{ connectionId: string; link: string }> {
-  const providerId = options.providerId ?? DEFAULT_PROVIDER;
+  const providerId = options.providerId ?? resolveDefaultProviderId();
   const provider = getOpenBankingProvider(providerId);
   const reference = `mf_${crypto.randomUUID()}`;
 
@@ -96,12 +94,12 @@ export async function startBankConnection(options: {
 export async function handleConnectionCallback(options: {
   supabase: SupabaseClient;
   userId: string;
-  /** Our bank_connections.id or provider requisition id / reference */
+  /** Our bank_connections.id or provider requisition id / reference / Enable Banking state */
   ref?: string | null;
   requisitionId?: string | null;
+  /** Enable Banking authorization code from callback */
+  code?: string | null;
 }): Promise<{ connection: BankConnectionRow; synced: boolean }> {
-  const provider = getOpenBankingProvider(DEFAULT_PROVIDER);
-
   let connection = await findConnection(options.supabase, options.userId, {
     id: options.ref,
     providerConnectionId: options.requisitionId ?? options.ref,
@@ -109,6 +107,73 @@ export async function handleConnectionCallback(options: {
 
   if (!connection || connection.status === "disconnected") {
     throw new OpenBankingHttpError("Connessione bancaria non trovata.", 404);
+  }
+
+  const provider = getOpenBankingProvider(connection.provider);
+
+  // Enable Banking: exchange code → session before reading accounts.
+  if (options.code && provider.completeAuthorization) {
+    const completed = await provider.completeAuthorization({ code: options.code });
+    const { data: sessionRow, error: sessionError } = await options.supabase
+      .from("bank_connections")
+      .update({
+        provider_connection_id: completed.connection.id,
+        consent_expires_at:
+          connection.consent_expires_at ?? completed.consentExpiresAt,
+        metadata: {
+          ...(connection.metadata ?? {}),
+          authorization_id: connection.provider_connection_id,
+          session_id: completed.connection.id,
+        },
+        error_message: null,
+      })
+      .eq("id", connection.id)
+      .eq("user_id", options.userId)
+      .select("*")
+      .single();
+
+    if (sessionError || !sessionRow) {
+      throw new Error("Impossibile salvare la sessione bancaria.");
+    }
+    connection = sessionRow as BankConnectionRow;
+
+    for (const pa of completed.accounts) {
+      await upsertBankAccountAndMoneyFlowAccount({
+        supabase: options.supabase,
+        userId: options.userId,
+        connection,
+        providerAccountId: pa.id,
+        iban: pa.iban,
+        name: pa.name ?? `${connection.institution_name}`,
+        currency: pa.currency ?? "EUR",
+      });
+    }
+
+    const { data: activated, error: activateError } = await options.supabase
+      .from("bank_connections")
+      .update({
+        status: "active",
+        error_message: null,
+        consent_expires_at:
+          connection.consent_expires_at ?? completed.consentExpiresAt,
+      })
+      .eq("id", connection.id)
+      .eq("user_id", options.userId)
+      .select("*")
+      .single();
+
+    if (activateError || !activated) {
+      throw new Error("Impossibile attivare la connessione bancaria.");
+    }
+    connection = activated as BankConnectionRow;
+
+    const result = await syncConnection({
+      supabase: options.supabase,
+      userId: options.userId,
+      connectionId: connection.id,
+    });
+
+    return { connection, synced: result.errors.length === 0 };
   }
 
   // Ownership already enforced by user_id filter
@@ -218,11 +283,19 @@ export async function resolveConsentExpiresAt(
   }
 }
 
+/**
+ * Resolve connection from callback identifiers:
+ * - Enable Banking `state` / our `reference` → metadata.reference
+ * - GoCardless `ref` → metadata.reference
+ * - bank_connections.id (UUID)
+ * - provider_connection_id (requisition id / authorization id / session id)
+ */
 async function findConnection(
   supabase: SupabaseClient,
   userId: string,
   keys: { id?: string | null; providerConnectionId?: string | null }
 ): Promise<BankConnectionRow | null> {
+  // state / reference (Enable Banking + GoCardless)
   if (keys.id) {
     const { data, error } = await supabase
       .from("bank_connections").select("*")
@@ -563,7 +636,8 @@ export async function syncConnection(options: {
         err &&
         typeof err === "object" &&
         "name" in err &&
-        (err as { name: string }).name === "GoCardlessApiError"
+        ((err as { name: string }).name === "GoCardlessApiError" ||
+          (err as { name: string }).name === "OpenBankingProviderError")
       ) {
         result.errors.push(
           (err as Error).message ||

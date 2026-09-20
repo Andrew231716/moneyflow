@@ -11,7 +11,10 @@ export type {
 } from "./types";
 
 export type { OpenBankingProvider } from "./provider";
-export { getOpenBankingProvider } from "./factory";
+export {
+  getOpenBankingProvider,
+  resolveDefaultProviderId,
+} from "./factory";
 export {
   listInstitutions,
   startBankConnection,

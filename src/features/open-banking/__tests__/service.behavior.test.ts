@@ -18,6 +18,7 @@ const mockProvider: OpenBankingProvider = {
 
 vi.mock("../factory", () => ({
   getOpenBankingProvider: () => mockProvider,
+  resolveDefaultProviderId: () => "gocardless" as const,
 }));
 
 import {

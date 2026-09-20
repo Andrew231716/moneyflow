@@ -4,6 +4,7 @@ import {
   OpenBankingHttpError,
   requireUser,
 } from "@/features/open-banking/auth";
+import { resolveDefaultProviderId } from "@/features/open-banking/factory";
 import { listInstitutions } from "@/features/open-banking/service";
 
 export const dynamic = "force-dynamic";
@@ -20,7 +21,11 @@ export async function GET(request: NextRequest) {
     const country = (searchParams.get("country") ?? "IT").toUpperCase();
     const search = searchParams.get("q") ?? searchParams.get("search") ?? undefined;
 
-    const institutions = await listInstitutions({ country, search });
+    const institutions = await listInstitutions({
+      country,
+      search,
+      providerId: resolveDefaultProviderId(),
+    });
 
     return NextResponse.json({
       country,

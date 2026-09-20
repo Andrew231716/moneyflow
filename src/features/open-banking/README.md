@@ -2,33 +2,53 @@
 
 Read-only Account Information (AIS). No payments / PISP / transfers out.
 
-## Setup
+## Setup (Enable Banking — default)
+
+GoCardless Bank Account Data is closed to new signups. MoneyFlow defaults to
+[Enable Banking](https://enablebanking.com/).
 
 1. Apply `supabase/migrations/002_open_banking.sql` after `001_initial_schema.sql`.
-2. Create a [GoCardless Bank Account Data](https://bankaccountdata.gocardless.com/) user secret.
-3. Copy env vars from `.env.example`:
+2. Create an Enable Banking application in the Control Panel.
+3. Whitelist the redirect URL (must match `OPEN_BANKING_REDIRECT_URL`):
+   - Local: `http://localhost:3000/api/open-banking/callback`
+   - Production: `https://moneyflow-ecru.vercel.app/api/open-banking/callback`
+4. Copy env vars from `.env.example`:
 
 ```bash
+OPEN_BANKING_PROVIDER=enablebanking
+ENABLEBANKING_APPLICATION_ID=   # Application ID from Control Panel
+ENABLEBANKING_PRIVATE_KEY=      # RSA private key PEM (keep secrets out of git)
+OPEN_BANKING_REDIRECT_URL=http://localhost:3000/api/open-banking/callback
+```
+
+For Vercel, set the same three variables (plus Supabase). Paste the PEM with
+real newlines or `\n` escapes — never commit the private key.
+
+Optional legacy GoCardless:
+
+```bash
+OPEN_BANKING_PROVIDER=gocardless
 GOCARDLESS_SECRET_ID=
 GOCARDLESS_SECRET_KEY=
-OPEN_BANKING_REDIRECT_URL=http://localhost:3000/api/open-banking/callback
 ```
 
 Secrets are **server-only** — never prefix with `NEXT_PUBLIC_`.
 
 ## Architecture
 
-- App code uses `OpenBankingProvider` only (`src/features/open-banking/provider.ts`).
-- GoCardless lives in `gocardless-provider.ts` (adapter). Tink / TrueLayer / Yapily / Salt Edge can be added via `factory.ts`.
-- API base: `https://bankaccountdata.gocardless.com/api/v2`
-- Token: `POST /token/new/` with secret id/key; cached server-side with refresh.
+- App code uses `OpenBankingProvider` only (`provider.ts`).
+- Default provider id: `resolveDefaultProviderId()` (env `OPEN_BANKING_PROVIDER`,
+  else Enable Banking if configured, else GoCardless if configured).
+- Adapters: `enablebanking-provider.ts`, `gocardless-provider.ts`.
+- Enable Banking API: `https://api.enablebanking.com` (RS256 JWT per request).
+- Callback: Enable Banking returns `code` + `state` (our `reference`); GoCardless uses `ref`.
 
 ## Routes
 
 | Method | Path | Purpose |
 |--------|------|---------|
 | GET | `/api/open-banking/institutions?country=IT&q=` | List IT banks (Intesa first) |
-| POST | `/api/open-banking/connect` | Create requisition → bank link |
+| POST | `/api/open-banking/connect` | Start AIS auth → bank link |
 | GET | `/api/open-banking/callback` | After bank auth → accounts + sync |
 | POST | `/api/open-banking/sync` | Re-sync connection |
 | GET | `/api/open-banking/accounts` | List connections |
@@ -59,6 +79,8 @@ Extend `Transaction` / `Account` types in `src/types/database.ts` with OB column
 ## Intesa Sanpaolo
 
 Institution IDs are **never hardcoded**. Institutions are fetched for `country=IT` and Intesa is prioritized by case-insensitive name normalization (`Intesa Sanpaolo` / `Intesa San Paolo` / `INTESA SANPAOLO`). If not found, the full list is shown.
+
+Enable Banking ids are encoded as `COUNTRY::Name` (e.g. `IT::Intesa Sanpaolo`).
 
 ## Tests
 

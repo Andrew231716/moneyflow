@@ -1,4 +1,9 @@
 import type { OpenBankingProvider } from "./provider";
+import {
+  OpenBankingConfigError,
+  OpenBankingProviderError,
+  friendlyProviderStatusMessage,
+} from "./errors";
 import type {
   CreateConnectionParams,
   GetTransactionsParams,
@@ -9,6 +14,10 @@ import type {
   ProviderConnection,
   ProviderTransaction,
 } from "./types";
+
+export { OpenBankingConfigError };
+/** @deprecated Use OpenBankingProviderError */
+export const GoCardlessApiError = OpenBankingProviderError;
 
 const API_BASE = "https://bankaccountdata.gocardless.com/api/v2";
 
@@ -32,45 +41,12 @@ function requireSecrets(): { secretId: string; secretKey: string } {
   return { secretId, secretKey };
 }
 
-export class OpenBankingConfigError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = "OpenBankingConfigError";
-  }
-}
-
-export class GoCardlessApiError extends Error {
-  constructor(
-    message: string,
-    public readonly status: number
-  ) {
-    super(message);
-    this.name = "GoCardlessApiError";
-  }
-}
-
 async function parseJsonSafe(res: Response): Promise<unknown> {
   try {
     return await res.json();
   } catch {
     return null;
   }
-}
-
-function friendlyStatusMessage(status: number): string {
-  if (status === 401 || status === 403) {
-    return "Autenticazione Open Banking non valida. Controlla le credenziali del provider.";
-  }
-  if (status === 404) {
-    return "Risorsa bancaria non trovata.";
-  }
-  if (status === 429) {
-    return "Troppe richieste al provider bancario. Riprova tra poco.";
-  }
-  if (status >= 500) {
-    return "Il provider bancario non è disponibile al momento. Riprova più tardi.";
-  }
-  return "Errore nella comunicazione con il provider bancario.";
 }
 
 /** Prefer a clearable timeout over AbortSignal.timeout so completed requests do not leave live timers (hangs vitest / idle Node). */
@@ -117,7 +93,10 @@ async function gcFetch<T>(
     });
     if (!res.ok) {
       // Never log tokens / secrets / full bank payloads
-      throw new GoCardlessApiError(friendlyStatusMessage(res.status), res.status);
+      throw new OpenBankingProviderError(
+        friendlyProviderStatusMessage(res.status),
+        res.status
+      );
     }
     if (res.status === 204) {
       return undefined as T;

@@ -9,7 +9,8 @@ export const dynamic = "force-dynamic";
 
 /**
  * GET /api/open-banking/callback
- * Resolves requisition → accounts → MoneyFlow accounts → first sync.
+ * GoCardless: ref / requisition id
+ * Enable Banking: code + state
  */
 export async function GET(request: NextRequest) {
   const appOrigin =
@@ -21,8 +22,12 @@ export async function GET(request: NextRequest) {
     const { user, supabase } = await requireUser();
     const { searchParams } = request.nextUrl;
 
+    const code = searchParams.get("code");
+    const state = searchParams.get("state");
+
     // GoCardless redirects with ref= our reference; may also include other params
     const ref =
+      state ??
       searchParams.get("ref") ??
       searchParams.get("reference") ??
       searchParams.get("connection_id");
@@ -36,6 +41,7 @@ export async function GET(request: NextRequest) {
       userId: user.id,
       ref,
       requisitionId,
+      code,
     });
 
     const status = connection.status;

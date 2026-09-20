@@ -33,6 +33,18 @@ export interface OpenBankingProvider {
   /** Optional: read end-user agreement / consent window from provider. */
   getAgreement?(agreementId: string): Promise<ProviderAgreement | null>;
 
+  /**
+   * Optional: exchange OAuth/AIS authorization code for a session
+   * (used by Enable Banking after bank redirect).
+   */
+  completeAuthorization?(params: {
+    code: string;
+  }): Promise<{
+    connection: ProviderConnection;
+    accounts: ProviderAccount[];
+    consentExpiresAt: string | null;
+  }>;
+
   /** Optional: revoke / delete connection at provider. */
   deleteConnection?(connectionId: string): Promise<void>;
 }
