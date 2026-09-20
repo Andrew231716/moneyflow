@@ -17,16 +17,25 @@ import {
   ChartCard,
   MoneyValue,
   EmptyState,
+  CutPotentialSection,
+  GoalTrajectoryCard,
+  SectionHeader,
 } from "@/components/money";
+import type { CutPotentialResult } from "@/lib/finance/cut-potential";
+import type { GoalTrajectory } from "@/lib/finance/goal-trajectory";
 
 export function StatisticsView({
   series6,
   series12,
   byCategory,
+  cutPotential,
+  goalTrajectories,
 }: {
   series6: { label: string; income: number; expense: number; savings: number }[];
   series12: { label: string; income: number; expense: number; savings: number }[];
   byCategory: { name: string; color: string; total: number }[];
+  cutPotential: CutPotentialResult;
+  goalTrajectories: GoalTrajectory[];
 }) {
   return (
     <div className="space-y-5">
@@ -47,6 +56,32 @@ export function StatisticsView({
           <SeriesChart title="Ultimi 12 mesi" data={series12} />
         </TabsContent>
       </Tabs>
+
+      <div className="grid gap-4 lg:grid-cols-2">
+        <CutPotentialSection result={cutPotential} />
+        <section className="space-y-4">
+          <div className="px-1">
+            <SectionHeader
+              title="Tappe obiettivi"
+              description="Ritmo e previsione rispetto alla scadenza"
+              href="/goals"
+            />
+          </div>
+          {goalTrajectories.length === 0 ? (
+            <EmptyState
+              className="py-8"
+              title="Nessun obiettivo"
+              description="Crea un obiettivo con data per vedere le tappe."
+            />
+          ) : (
+            <div className="space-y-3">
+              {goalTrajectories.map((t) => (
+                <GoalTrajectoryCard key={t.goalId} trajectory={t} />
+              ))}
+            </div>
+          )}
+        </section>
+      </div>
 
       <ChartCard title="Top categorie" description="Uscite del mese · trasferimenti esclusi">
         {byCategory.length === 0 ? (

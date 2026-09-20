@@ -25,6 +25,8 @@ import type {
   MonthSummary,
   Transaction,
 } from "@/types/database";
+import type { CutPotentialResult } from "@/lib/finance/cut-potential";
+import type { GoalTrajectory } from "@/lib/finance/goal-trajectory";
 import { DemoSeedButton } from "@/features/analytics/demo-seed-button";
 import { DashboardSyncStatus } from "@/features/open-banking/components/dashboard-sync-status";
 import {
@@ -35,6 +37,8 @@ import {
   GoalCard,
   AccountCard,
   InsightCard,
+  CutPotentialSection,
+  GoalTrajectoryCard,
   EmptyState,
   SectionHeader,
   QuickActions,
@@ -57,6 +61,7 @@ export function DashboardView(props: {
   budgetProgress: BudgetProgress[];
   goals: Goal[];
   savingsAccounts: Account[];
+  reservedGoalsTotal: number;
   recent: Transaction[];
   forecast: {
     projectedExpense: number;
@@ -66,6 +71,8 @@ export function DashboardView(props: {
     dailyBurn: number;
   };
   insights: Insight[];
+  cutPotential: CutPotentialResult;
+  goalTrajectories: GoalTrajectory[];
   isEmpty: boolean;
 }) {
   const {
@@ -77,18 +84,21 @@ export function DashboardView(props: {
     budgetProgress,
     goals,
     savingsAccounts,
+    reservedGoalsTotal,
     recent,
     forecast,
     insights,
+    cutPotential,
+    goalTrajectories,
     isEmpty,
   } = props;
   const savingsBalance = savingsAccounts.reduce((s, a) => s + Number(a.balance), 0);
   const liquidBalance = availability - savingsBalance;
-  const activeGoals = goals.filter((g) => g.status === "active");
-  const highlightGoals = [
-    ...activeGoals,
-    ...goals.filter((g) => g.status === "completed"),
-  ].slice(0, 4);
+  const reservedGoals = goals.filter(
+    (g) => g.status !== "cancelled" && !g.settled
+  );
+  const activeGoals = reservedGoals.filter((g) => g.status === "active");
+  const highlightGoals = reservedGoals.slice(0, 4);
 
   const router = useRouter();
   const savingsDelta = summary.savings - previousSummary.savings;
@@ -224,34 +234,92 @@ export function DashboardView(props: {
         </ChartCard>
       </div>
 
-      {(savingsAccounts.length > 0 || highlightGoals.length > 0) && (
-        <section className="mf-surface p-5 space-y-4">
-          <SectionHeader
-            title="Salvadanaio"
-            description={
-              savingsAccounts.length > 0
-                ? `${formatCurrency(savingsBalance)} disponibili`
-                : "Risparmi e obiettivi"
-            }
-            href="/accounts"
-            linkLabel="Conti"
-          />
-          {savingsAccounts.length > 0 && (
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              {savingsAccounts.slice(0, 3).map((a) => (
-                <AccountCard key={a.id} account={a} />
-              ))}
+      {(savingsAccounts.length > 0 || reservedGoals.length > 0) && (
+        <div className="grid gap-4 lg:grid-cols-2">
+          <section className="mf-surface p-5 space-y-4">
+            <SectionHeader
+              title="Salvadanaio"
+              description={
+                savingsAccounts.length > 0
+                  ? `${formatCurrency(savingsBalance)} nei conti risparmio`
+                  : "Conti risparmio"
+              }
+              href="/accounts"
+              linkLabel="Conti"
+            />
+            {savingsAccounts.length > 0 ? (
+              <div className="space-y-3">
+                <MoneyValue amount={savingsBalance} size="lg" tone="success" />
+                <div className="grid gap-3 sm:grid-cols-2">
+                  {savingsAccounts.slice(0, 3).map((a) => (
+                    <AccountCard key={a.id} account={a} />
+                  ))}
+                </div>
+                <p className="text-[11px] text-muted-foreground leading-relaxed">
+                  Fonte di verità per la disponibilità: i saldi conti. Gli
+                  obiettivi riservati a destra possono già essere inclusi qui.
+                </p>
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                Nessun conto risparmio. Creane uno per il Salvadanaio.
+              </p>
+            )}
+          </section>
+
+          <section className="mf-surface p-5 space-y-4">
+            <SectionHeader
+              title="Obiettivi"
+              description="Somma non saldata (ancora disponibile)"
+              href="/goals"
+            />
+            <MoneyValue amount={reservedGoalsTotal} size="lg" tone="success" />
+            <p className="text-xs text-muted-foreground leading-relaxed">
+              Include obiettivi raggiunti ma non ancora saldati. Dopo{" "}
+              <span className="font-medium text-foreground">Saldato</span> escono
+              da questo totale (e, se confermi, dal Salvadanaio).
+            </p>
+            {highlightGoals.length > 0 ? (
+              <div className="space-y-3">
+                {highlightGoals.slice(0, 3).map((g) => (
+                  <GoalCard key={g.id} goal={g} compact />
+                ))}
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                Nessun obiettivo riservato
+              </p>
+            )}
+          </section>
+        </div>
+      )}
+
+      <div className="grid gap-4 lg:grid-cols-2">
+        <CutPotentialSection result={cutPotential} compact />
+
+        <section className="space-y-4">
+          <div className="px-1">
+            <SectionHeader
+              title="Tappe obiettivi"
+              description="Ritmo e previsione rispetto alla scadenza"
+              href="/goals"
+            />
+          </div>
+          {goalTrajectories.length === 0 ? (
+            <div className="mf-surface p-5">
+              <p className="text-sm text-muted-foreground">
+                Nessun obiettivo da monitorare
+              </p>
             </div>
-          )}
-          {highlightGoals.length > 0 && (
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              {highlightGoals.slice(0, 3).map((g) => (
-                <GoalCard key={g.id} goal={g} compact />
+          ) : (
+            <div className="space-y-3">
+              {goalTrajectories.map((t) => (
+                <GoalTrajectoryCard key={t.goalId} trajectory={t} />
               ))}
             </div>
           )}
         </section>
-      )}
+      </div>
 
       <div className="grid gap-4 lg:grid-cols-2">
         <section className="mf-surface p-5 space-y-4">

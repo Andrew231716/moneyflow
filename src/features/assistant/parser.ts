@@ -13,6 +13,10 @@ import {
   generateInsights,
   forecastMonthEnd,
 } from "@/lib/finance/engine";
+import {
+  formatCutPotentialAssistantText,
+  rankCutPotential,
+} from "@/lib/finance/cut-potential";
 import type { RecurringTransaction } from "@/types/database";
 import { formatCurrency } from "@/lib/utils";
 
@@ -32,6 +36,7 @@ export type AssistantIntent =
   | { type: "query_balance"; payload: { accountHint?: string } }
   | { type: "query_transactions"; payload: QueryPayload }
   | { type: "query_insights"; payload: Record<string, never> }
+  | { type: "query_cut_potential"; payload: Record<string, never> }
   | { type: "bulk_categorize"; payload: BulkCategorizePayload }
   | { type: "bulk_rename"; payload: BulkRenamePayload }
   | { type: "financial_projection"; payload: Record<string, never> }
@@ -146,6 +151,7 @@ function stripDateWords(text: string): string {
 const HELP_MESSAGE = `Sono il Gestore finanziario locale (senza AI cloud). Comandi utili:
 • Salvadanaio: "Metti 300 euro nel salvadanaio", "Preleva 50 dal salvadanaio"
 • Obiettivi: "Crea obiettivo Matrimonio a 200 euro già raggiunto", "Aggiungi 20 all'obiettivo Matrimonio"
+• Risparmio: "Dove posso risparmiare?"
 • Movimenti: "Aggiungi spesa 35 euro ristorante ieri", "Entrata 100 freelance"
 • Banca: "Sincronizza Intesa"
 • Query: "Quanto ho sul conto?", "Quanto ho speso questo mese", "Budget rimanente", "Previsione fine mese"
@@ -357,6 +363,15 @@ export function parseAssistantCommand(input: string): AssistantIntent {
         categoryHint: recurringMatch[3].trim(),
       },
     };
+  }
+
+  // Cut potential / where to save
+  if (
+    /dove\s+(?:posso|puoi)\s+risparm|tagliare\s+spes|ridurre\s+spes|consigli\s+di\s+risparm|dove\s+tagliare/.test(
+      lower
+    )
+  ) {
+    return { type: "query_cut_potential", payload: {} };
   }
 
   // Insights
@@ -586,6 +601,16 @@ export function runInsightsText(
   return insights.map((i) => `• ${i.title}: ${i.message}`).join("\n");
 }
 
+export function runCutPotentialText(
+  transactions: Transaction[],
+  budgets: Budget[],
+  goals: Goal[]
+): string {
+  return formatCutPotentialAssistantText(
+    rankCutPotential({ transactions, budgets, goals, limit: 4 })
+  );
+}
+
 export function findAccount(
   accounts: Account[],
   hint?: string,
@@ -626,6 +651,7 @@ export function findGoal(goals: Goal[], hint: string): Goal | undefined {
 export const ASSISTANT_EXAMPLES = [
   "Metti 300 euro nel salvadanaio",
   "Crea obiettivo Matrimonio Giulia e Ruben a 200 euro già raggiunto",
+  "Dove posso risparmiare?",
   "Quanto ho sul conto?",
   "Sincronizza Intesa",
   "Aggiungi spesa 35 euro ristorante ieri",

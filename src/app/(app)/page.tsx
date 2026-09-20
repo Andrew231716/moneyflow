@@ -13,10 +13,13 @@ import {
   calcExpenseByCategory,
   calcMonthSummary,
   calcMonthlySeries,
+  calcReservedGoalsTotal,
   calcTotalAvailability,
   forecastMonthEnd,
   generateInsights,
 } from "@/lib/finance/engine";
+import { rankCutPotential } from "@/lib/finance/cut-potential";
+import { calcGoalTrajectories } from "@/lib/finance/goal-trajectory";
 import { subMonths } from "date-fns";
 
 export default async function DashboardPage() {
@@ -49,6 +52,17 @@ export default async function DashboardPage() {
   const availability = calcTotalAvailability(accounts);
   const recent = transactions.filter((t) => t.type !== "transfer").slice(0, 8);
   const savingsAccounts = accounts.filter((a) => a.type === "savings");
+  const reservedGoalsTotal = calcReservedGoalsTotal(goals);
+  const cutPotential = rankCutPotential({
+    transactions,
+    budgets,
+    goals,
+    month: now,
+    limit: 4,
+  });
+  const goalTrajectories = calcGoalTrajectories(goals, now).filter(
+    (t) => !goals.find((g) => g.id === t.goalId)?.settled
+  );
 
   return (
     <AppShell title="Home">
@@ -61,9 +75,12 @@ export default async function DashboardPage() {
         budgetProgress={budgetProgress}
         goals={goals}
         savingsAccounts={savingsAccounts}
+        reservedGoalsTotal={reservedGoalsTotal}
         recent={recent}
         forecast={forecast}
         insights={insights}
+        cutPotential={cutPotential}
+        goalTrajectories={goalTrajectories.slice(0, 3)}
         isEmpty={accounts.length === 0 && transactions.length === 0}
       />
     </AppShell>

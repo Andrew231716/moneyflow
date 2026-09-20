@@ -5,10 +5,14 @@ import {
   getBudgetState,
   calcBudgetProgress,
   calcRecurringTotals,
+  calcReservedGoalsTotal,
+  isGoalReached,
+  isGoalSettled,
 } from "@/lib/finance/engine";
 import type {
   Account,
   Budget,
+  Goal,
   RecurringTransaction,
   Transaction,
 } from "@/types/database";
@@ -115,5 +119,37 @@ describe("financial engine", () => {
     const t = calcRecurringTotals(items);
     expect(t.monthly).toBe(70);
     expect(t.yearly).toBe(840);
+  });
+
+  it("sums reserved goals excluding settled", () => {
+    const goals = [
+      {
+        name: "Matrimonio",
+        current_amount: 200,
+        status: "completed",
+        settled: false,
+      },
+      {
+        name: "Vacanza",
+        current_amount: 150,
+        status: "active",
+        settled: false,
+      },
+      {
+        name: "Vecchio",
+        current_amount: 500,
+        status: "completed",
+        settled: true,
+      },
+      {
+        name: "Annullato",
+        current_amount: 80,
+        status: "cancelled",
+        settled: false,
+      },
+    ] as Goal[];
+    expect(calcReservedGoalsTotal(goals)).toBe(350);
+    expect(isGoalReached(goals[0])).toBe(true);
+    expect(isGoalSettled(goals[2])).toBe(true);
   });
 });

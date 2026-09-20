@@ -154,6 +154,32 @@ export function calcGoalProgress(goal: Goal): {
   };
 }
 
+/** Target met (raggiunto) — funds may still be earmarked and available. */
+export function isGoalReached(goal: Goal): boolean {
+  return (
+    goal.status === "completed" ||
+    Number(goal.current_amount) >= Number(goal.target_amount)
+  );
+}
+
+/** Saldato — money spent/used, excluded from reserved-goals total. */
+export function isGoalSettled(goal: Goal): boolean {
+  return Boolean(goal.settled);
+}
+
+/**
+ * Sum of current_amount for goals that are not settled.
+ * These are earmarked but still count as available until marked Saldato.
+ * Note: amounts may already live inside savings accounts — Home shows
+ * Salvadanaio (accounts) and Obiettivi (reserved) as separate views;
+ * totale disponibilità uses account balances only (source of truth).
+ */
+export function calcReservedGoalsTotal(goals: Goal[]): number {
+  return goals
+    .filter((g) => g.status !== "cancelled" && !isGoalSettled(g))
+    .reduce((sum, g) => sum + Number(g.current_amount), 0);
+}
+
 export function frequencyToMonthlyFactor(frequency: RecurringFrequency): number {
   switch (frequency) {
     case "weekly":

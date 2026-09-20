@@ -7,6 +7,8 @@ export { AccountCard, accountTypeLabels } from "./account-card";
 export { TransactionItem } from "./transaction-item";
 export { GoalCard } from "./goal-card";
 export { InsightCard } from "./insight-card";
+export { CutPotentialSection } from "./cut-potential-section";
+export { GoalMilestones, GoalTrajectoryCard } from "./goal-milestones";
 export { EmptyState } from "./empty-state";
 export { QuickActions, defaultQuickActions } from "./quick-actions";
 export type { QuickActionItem } from "./quick-actions";

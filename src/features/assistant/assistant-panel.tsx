@@ -21,6 +21,7 @@ import {
   findSavingsAccount,
   parseAssistantCommand,
   runInsightsText,
+  runCutPotentialText,
   runQueryBalance,
   runQueryBudget,
   runQueryTransactions,
@@ -167,6 +168,11 @@ export function AssistantPanel({
       pushAssistant(
         runInsightsText(transactions, recurring, budgets, goals)
       );
+      return;
+    }
+
+    if (intent.type === "query_cut_potential") {
+      pushAssistant(runCutPotentialText(transactions, budgets, goals));
       return;
     }
 

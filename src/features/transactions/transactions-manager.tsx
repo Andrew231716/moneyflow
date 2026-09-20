@@ -58,6 +58,7 @@ export function TransactionsManager({
   const router = useRouter();
   const searchParams = useSearchParams();
   const [filter, setFilter] = useState<"all" | TransactionType>("all");
+  const [categoryFilter, setCategoryFilter] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
   const [txType, setTxType] = useState<TransactionType>("expense");
   const [form, setForm] = useState({
@@ -76,16 +77,29 @@ export function TransactionsManager({
       setTxType(neu);
       setOpen(true);
       router.replace("/transactions", { scroll: false });
+      return;
+    }
+    const cat = searchParams.get("category");
+    if (cat) {
+      setCategoryFilter(cat);
+      setFilter("expense");
     }
   }, [searchParams, router]);
 
-  const filtered = useMemo(
-    () =>
+  const filtered = useMemo(() => {
+    let list =
       filter === "all"
         ? transactions
-        : transactions.filter((t) => t.type === filter),
-    [transactions, filter]
-  );
+        : transactions.filter((t) => t.type === filter);
+    if (categoryFilter) {
+      list = list.filter((t) =>
+        categoryFilter === "uncategorized"
+          ? !t.category_id
+          : t.category_id === categoryFilter
+      );
+    }
+    return list;
+  }, [transactions, filter, categoryFilter]);
 
   async function save() {
     setSaving(true);
@@ -204,7 +218,16 @@ export function TransactionsManager({
 
       <TransferSuggestions transactions={transactions} />
 
-      <Tabs value={filter} onValueChange={(v) => setFilter(v as typeof filter)}>
+      <Tabs
+        value={filter}
+        onValueChange={(v) => {
+          setFilter(v as typeof filter);
+          setCategoryFilter(null);
+          if (searchParams.get("category")) {
+            router.replace("/transactions", { scroll: false });
+          }
+        }}
+      >
         <TabsList className="w-full sm:w-auto flex-wrap h-auto">
           <TabsTrigger value="all" className="min-h-10">Tutti</TabsTrigger>
           <TabsTrigger value="expense" className="min-h-10">Uscite</TabsTrigger>
@@ -212,6 +235,28 @@ export function TransactionsManager({
           <TabsTrigger value="transfer" className="min-h-10">Trasferimenti</TabsTrigger>
         </TabsList>
       </Tabs>
+
+      {categoryFilter && (
+        <div className="flex flex-wrap items-center gap-2 text-sm">
+          <Badge variant="secondary">
+            Categoria:{" "}
+            {categoryFilter === "uncategorized"
+              ? "Senza categoria"
+              : categories.find((c) => c.id === categoryFilter)?.name ?? "Filtro"}
+          </Badge>
+          <Button
+            size="sm"
+            variant="ghost"
+            className="min-h-touch"
+            onClick={() => {
+              setCategoryFilter(null);
+              router.replace("/transactions", { scroll: false });
+            }}
+          >
+            Rimuovi filtro
+          </Button>
+        </div>
+      )}
 
       <div className="hidden md:block mf-surface overflow-hidden">
         <Table>

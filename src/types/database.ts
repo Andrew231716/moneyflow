@@ -168,6 +168,9 @@ export interface Goal {
   color: string;
   icon: string;
   status: GoalStatus;
+  /** True when earmarked funds were spent/used (saldato) — no longer in available pool. */
+  settled: boolean;
+  settled_at: string | null;
   created_at: string;
   updated_at: string;
 }

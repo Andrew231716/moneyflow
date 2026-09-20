@@ -85,6 +85,12 @@ describe("assistant parser", () => {
     );
   });
 
+  it("parses cut potential query", () => {
+    expect(parseAssistantCommand("Dove posso risparmiare?").type).toBe(
+      "query_cut_potential"
+    );
+  });
+
   it("parses insights", () => {
     expect(parseAssistantCommand("consigli finanziari").type).toBe(
       "query_insights"
