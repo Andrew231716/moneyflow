@@ -17,6 +17,7 @@ const incoming: NormalizedBankTransaction = {
   description: "Nuova descr",
   merchant: "Nuovo merchant",
   notes: null,
+  bookingStatus: "booked",
   raw: {},
 };
 
@@ -87,6 +88,74 @@ describe("decideDedup", () => {
 
   it("inserts when unknown", () => {
     expect(decideDedup(incoming, new Map(), new Map()).action).toBe("insert");
+  });
+
+  it("promotes a matching pending row when booked arrives", () => {
+    const pending = {
+      id: "pend-1",
+      provider: "enablebanking",
+      provider_transaction_id: null,
+      fingerprint: "fp-pending",
+      category_id: "cat-kept",
+      description: "Esselunga Milano",
+      merchant: "Esselunga",
+      notes: null,
+      amount: 42.5,
+      date: "2026-03-01",
+      type: "expense",
+      booking_status: "pending" as const,
+      manual_override_fields: ["category_id"],
+    };
+    const booked: NormalizedBankTransaction = {
+      ...incoming,
+      provider: "enablebanking",
+      providerTransactionId: "book-99",
+      fingerprint: "fp-booked",
+      amount: 42.5,
+      date: "2026-03-02",
+      description: "Esselunga Milano",
+      merchant: "Esselunga",
+      bookingStatus: "booked",
+    };
+    const decision = decideDedup(
+      booked,
+      new Map(),
+      new Map(),
+      [pending]
+    );
+    expect(decision.action).toBe("promote");
+    if (decision.action === "promote") {
+      expect(decision.existingId).toBe("pend-1");
+      expect(decision.fields.booking_status).toBe("booked");
+      expect(decision.fields.provider_transaction_id).toBe("book-99");
+      expect(decision.fields.date).toBe("2026-03-02");
+    }
+  });
+
+  it("skips pending when the same provider id is already booked", () => {
+    const bookedExisting = {
+      id: "e-booked",
+      provider: "enablebanking",
+      provider_transaction_id: "same-id",
+      fingerprint: "fp",
+      category_id: null,
+      description: "X",
+      merchant: null,
+      notes: null,
+      booking_status: "booked" as const,
+      manual_override_fields: [],
+    };
+    const pendingIncoming: NormalizedBankTransaction = {
+      ...incoming,
+      providerTransactionId: "same-id",
+      bookingStatus: "pending",
+    };
+    const decision = decideDedup(
+      pendingIncoming,
+      new Map([["same-id", bookedExisting]]),
+      new Map()
+    );
+    expect(decision.action).toBe("skip");
   });
 });
 

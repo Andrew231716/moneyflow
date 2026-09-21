@@ -89,7 +89,7 @@ describe("parseEbAmount", () => {
   });
 });
 
-describe("Enable Banking booked-only transactions", () => {
+describe("Enable Banking booked + pending transactions", () => {
   afterEach(() => {
     clearEnableBankingKeyCache();
     vi.unstubAllGlobals();
@@ -98,7 +98,7 @@ describe("Enable Banking booked-only transactions", () => {
     delete process.env.ENABLEBANKING_PRIVATE_KEY;
   });
 
-  it("filters to booked rows without sending transaction_status", async () => {
+  it("keeps booked and pending rows without sending transaction_status", async () => {
     process.env.ENABLEBANKING_APPLICATION_ID = "app-test-id";
     process.env.ENABLEBANKING_PRIVATE_KEY = TEST_PRIVATE_KEY;
 
@@ -133,6 +133,14 @@ describe("Enable Banking booked-only transactions", () => {
               transaction_amount: { amount: "10.00", currency: "EUR" },
               remittance_information: ["Pending"],
             },
+            {
+              entry_reference: "i1",
+              status: "INFO",
+              value_date: "2026-03-02",
+              credit_debit_indicator: "DBIT",
+              transaction_amount: { amount: "1.00", currency: "EUR" },
+              remittance_information: ["Info only"],
+            },
           ],
         }),
         { status: 200 }
@@ -142,12 +150,15 @@ describe("Enable Banking booked-only transactions", () => {
 
     const provider = new EnableBankingProvider();
     const txs = await provider.getTransactions({ accountId: "acc-1" });
-    expect(txs).toHaveLength(2);
+    expect(txs).toHaveLength(3);
     expect(txs[0].id).toBe("b1");
-    expect(txs[0].description).toBe("Booked");
+    expect(txs[0].bookingStatus).toBe("booked");
     expect(txs[0].amount).toBe(-10);
     expect(txs[1].id).toBe("b2");
     expect(txs[1].amount).toBe(12.5);
+    expect(txs[2].id).toBe("p1");
+    expect(txs[2].bookingStatus).toBe("pending");
+    expect(txs[2].description).toBe("Pending");
   });
 
   it("keeps first page when continuation page returns 422", async () => {

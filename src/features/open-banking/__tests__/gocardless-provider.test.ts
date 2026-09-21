@@ -13,7 +13,7 @@ describe("GoCardlessProvider transactions & auth", () => {
     delete process.env.GOCARDLESS_SECRET_KEY;
   });
 
-  it("persists only booked transactions (excludes pending)", async () => {
+  it("returns booked and pending with bookingStatus", async () => {
     process.env.GOCARDLESS_SECRET_ID = "sid";
     process.env.GOCARDLESS_SECRET_KEY = "skey";
 
@@ -62,9 +62,12 @@ describe("GoCardlessProvider transactions & auth", () => {
 
     const provider = new GoCardlessProvider();
     const txs = await provider.getTransactions({ accountId: "acc-1" });
-    expect(txs).toHaveLength(1);
+    expect(txs).toHaveLength(2);
     expect(txs[0].id).toBe("b1");
+    expect(txs[0].bookingStatus).toBe("booked");
     expect(txs[0].description).toBe("Booked");
+    expect(txs[1].id).toBe("p1");
+    expect(txs[1].bookingStatus).toBe("pending");
   });
 
   it("uses /token/new/ then /token/refresh/ per current Bank Account Data docs", async () => {

@@ -84,6 +84,8 @@ export interface ProviderTransaction {
   remittanceInformation?: string | null;
   debtorName?: string | null;
   creditorName?: string | null;
+  /** AIS booking state — pending until the bank posts it. */
+  bookingStatus?: "booked" | "pending";
   raw?: Record<string, unknown>;
 }
 
@@ -114,6 +116,7 @@ export interface NormalizedBankTransaction {
   description: string;
   merchant: string | null;
   notes: string | null;
+  bookingStatus: "booked" | "pending";
   raw: Record<string, unknown>;
 }
 

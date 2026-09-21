@@ -333,6 +333,12 @@ function isBookedStatus(status: string | null | undefined): boolean {
   return s === "BOOK" || s === "BOOKED";
 }
 
+function isPendingStatus(status: string | null | undefined): boolean {
+  if (!status) return false;
+  const s = status.toUpperCase();
+  return s === "PDNG" || s === "PENDING";
+}
+
 function mapTx(tx: EbTransaction): ProviderTransaction {
   const rawAmount = parseEbAmount(tx.transaction_amount?.amount ?? 0);
   const indicator = tx.credit_debit_indicator;
@@ -342,6 +348,7 @@ function mapTx(tx: EbTransaction): ProviderTransaction {
   if (indicator === "CRDT" && amount < 0) amount = Math.abs(amount);
 
   const remittance = tx.remittance_information?.filter(Boolean).join(" ") || null;
+  const pending = isPendingStatus(tx.status);
 
   return {
     id: tx.entry_reference ?? tx.transaction_id ?? null,
@@ -354,6 +361,7 @@ function mapTx(tx: EbTransaction): ProviderTransaction {
     remittanceInformation: remittance,
     debtorName: tx.debtor?.name ?? null,
     creditorName: tx.creditor?.name ?? null,
+    bookingStatus: pending ? "pending" : "booked",
     raw: tx as unknown as Record<string, unknown>,
   };
 }
@@ -582,10 +590,10 @@ export class EnableBankingProvider implements OpenBankingProvider {
         }
         throw err;
       }
-      const booked = (data.transactions ?? []).filter((t: EbTransaction) =>
-        isBookedStatus(t.status)
+      const kept = (data.transactions ?? []).filter(
+        (t: EbTransaction) => isBookedStatus(t.status) || isPendingStatus(t.status)
       );
-      all.push(...booked.map(mapTx));
+      all.push(...kept.map(mapTx));
       continuation = data.continuation_key ?? null;
     } while (continuation);
 

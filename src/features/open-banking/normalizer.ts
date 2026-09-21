@@ -88,6 +88,9 @@ export function normalizeProviderTransaction(
     merchant,
   });
 
+  const bookingStatus =
+    tx.bookingStatus === "pending" ? ("pending" as const) : ("booked" as const);
+
   return {
     provider: options.provider,
     providerTransactionId,
@@ -99,6 +102,7 @@ export function normalizeProviderTransaction(
     description,
     merchant,
     notes: null,
+    bookingStatus,
     raw: tx.raw ?? {},
   };
 }

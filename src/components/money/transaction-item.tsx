@@ -2,6 +2,7 @@ import { ArrowLeftRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { Transaction } from "@/types/database";
 import { MoneyValue } from "./money-value";
+import { StatusBadge } from "./status-badge";
 
 export function TransactionItem({
   transaction: tx,
@@ -14,6 +15,7 @@ export function TransactionItem({
   showAccount?: boolean;
   onClick?: () => void;
 }) {
+  const pending = (tx.booking_status ?? "booked") === "pending";
   const meta = [
     tx.date,
     showAccount ? tx.account?.name : null,
@@ -31,7 +33,12 @@ export function TransactionItem({
           <ArrowLeftRight className="h-4 w-4 mt-0.5 text-muted-foreground shrink-0" />
         )}
         <div className="min-w-0">
-          <p className="truncate text-sm font-medium">{tx.description || "—"}</p>
+          <div className="flex flex-wrap items-center gap-1.5">
+            <p className="truncate text-sm font-medium">{tx.description || "—"}</p>
+            {pending && (
+              <StatusBadge tone="warning">Non contabilizzato</StatusBadge>
+            )}
+          </div>
           <p className="text-xs text-muted-foreground truncate">{meta}</p>
         </div>
       </div>
@@ -39,7 +46,7 @@ export function TransactionItem({
         amount={Number(tx.amount)}
         type={tx.type === "transfer" ? undefined : tx.type}
         size="sm"
-        className="shrink-0"
+        className={cn("shrink-0", pending && "opacity-80")}
       />
     </>
   );
@@ -52,6 +59,7 @@ export function TransactionItem({
         className={cn(
           "flex w-full items-center justify-between gap-3 rounded-xl px-3 py-3 min-h-touch text-left",
           "hover:bg-muted/50 transition-colors",
+          pending && "bg-amber-50/60 dark:bg-amber-950/20",
           className
         )}
       >
@@ -65,6 +73,7 @@ export function TransactionItem({
       className={cn(
         "flex items-center justify-between gap-3 rounded-xl px-3 py-3 min-h-touch",
         "hover:bg-muted/50 transition-colors",
+        pending && "bg-amber-50/60 dark:bg-amber-950/20",
         className
       )}
     >

@@ -351,11 +351,14 @@ export function TransactionsManager({
               >
                 <TableCell className="whitespace-nowrap">{tx.date}</TableCell>
                 <TableCell>
-                  <div className="flex items-center gap-2">
+                  <div className="flex flex-wrap items-center gap-2">
                     {tx.type === "transfer" && (
                       <ArrowLeftRight className="h-3.5 w-3.5 text-muted-foreground" />
                     )}
-                    {tx.description || "—"}
+                    <span>{tx.description || "—"}</span>
+                    {(tx.booking_status ?? "booked") === "pending" && (
+                      <Badge variant="secondary">Non contabilizzato</Badge>
+                    )}
                   </div>
                 </TableCell>
                 <TableCell>
