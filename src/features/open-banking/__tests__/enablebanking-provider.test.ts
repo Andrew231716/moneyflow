@@ -6,6 +6,7 @@ import {
   decodeInstitutionId,
   encodeInstitutionId,
   EnableBankingProvider,
+  parseEbAmount,
 } from "../enablebanking-provider";
 
 /** Deterministic PKCS8 RSA key for unit tests only (not a real secret). */
@@ -78,6 +79,16 @@ describe("Enable Banking JWT config", () => {
   });
 });
 
+describe("parseEbAmount", () => {
+  it("parses plain and European decimal formats", () => {
+    expect(parseEbAmount("10.00")).toBe(10);
+    expect(parseEbAmount("12,50")).toBe(12.5);
+    expect(parseEbAmount("1.234,56")).toBe(1234.56);
+    expect(parseEbAmount(-42)).toBe(-42);
+    expect(Number.isNaN(parseEbAmount(""))).toBe(true);
+  });
+});
+
 describe("Enable Banking booked-only transactions", () => {
   afterEach(() => {
     clearEnableBankingKeyCache();
@@ -107,6 +118,14 @@ describe("Enable Banking booked-only transactions", () => {
               remittance_information: ["Booked"],
             },
             {
+              entry_reference: "b2",
+              status: "BOOKED",
+              booking_date: "2026-03-01",
+              credit_debit_indicator: "CRDT",
+              transaction_amount: { amount: "12,50", currency: "EUR" },
+              remittance_information: ["Booked EU amount"],
+            },
+            {
               entry_reference: "p1",
               status: "PDNG",
               value_date: "2026-03-02",
@@ -123,10 +142,12 @@ describe("Enable Banking booked-only transactions", () => {
 
     const provider = new EnableBankingProvider();
     const txs = await provider.getTransactions({ accountId: "acc-1" });
-    expect(txs).toHaveLength(1);
+    expect(txs).toHaveLength(2);
     expect(txs[0].id).toBe("b1");
     expect(txs[0].description).toBe("Booked");
     expect(txs[0].amount).toBe(-10);
+    expect(txs[1].id).toBe("b2");
+    expect(txs[1].amount).toBe(12.5);
   });
 
   it("keeps first page when continuation page returns 422", async () => {

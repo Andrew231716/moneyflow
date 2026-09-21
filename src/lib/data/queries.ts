@@ -37,41 +37,57 @@ export async function fetchCategories(): Promise<Category[]> {
   return (data as Category[]) ?? [];
 }
 
+/**
+ * Load transactions for Home / Movimenti / stats.
+ *
+ * Important: do NOT embed `account:accounts(*)` here. `transactions` has two FKs
+ * to `accounts` (`account_id` and `transfer_account_id`). PostgREST returns
+ * PGRST201 (ambiguous relationship) and supabase-js yields `data: null` — which
+ * previously rendered Home + Movimenti as all zeros even after a successful bank sync.
+ * We load accounts in a second query and attach them in memory instead.
+ */
 export async function fetchTransactions(monthsBack = 12): Promise<Transaction[]> {
   const supabase = await createClient();
   const from = format(startOfMonth(subMonths(new Date(), monthsBack)), "yyyy-MM-dd");
-  // Disambiguate accounts embed: transactions has both account_id and transfer_account_id FKs.
-  // Prefer column hint (`accounts!account_id`) — more stable than constraint name across envs.
-  const selectWithAccount =
-    "*, category:categories(*), account:accounts!account_id(*)";
-  const selectPlain = "*, category:categories(*)";
 
-  const primary = await supabase
+  const { data, error } = await supabase
     .from("transactions")
-    .select(selectWithAccount)
+    .select("*, category:categories(*)")
     .gte("date", from)
     .order("date", { ascending: false })
     .limit(2000);
 
-  if (!primary.error) {
-    return (primary.data as Transaction[]) ?? [];
-  }
-
-  console.error("fetchTransactions embed failed:", primary.error.message);
-
-  const fallback = await supabase
-    .from("transactions")
-    .select(selectPlain)
-    .gte("date", from)
-    .order("date", { ascending: false })
-    .limit(2000);
-
-  if (fallback.error) {
-    console.error("fetchTransactions", fallback.error.message);
+  if (error) {
+    console.error("fetchTransactions", error.message);
     throw new Error("Impossibile caricare i movimenti.");
   }
 
-  return (fallback.data as Transaction[]) ?? [];
+  const rows = (data as Transaction[]) ?? [];
+  if (rows.length === 0) return rows;
+
+  const accountIds = Array.from(
+    new Set(rows.map((t) => t.account_id).filter((id): id is string => Boolean(id)))
+  );
+  if (accountIds.length === 0) return rows;
+
+  const { data: accounts, error: accountsError } = await supabase
+    .from("accounts")
+    .select("*")
+    .in("id", accountIds);
+
+  if (accountsError) {
+    // Rows still render without account names — better than empty Home/Movimenti.
+    console.error("fetchTransactions accounts", accountsError.message);
+    return rows;
+  }
+
+  const byId = new Map(
+    ((accounts as Account[]) ?? []).map((a) => [a.id, a] as const)
+  );
+  return rows.map((t) => ({
+    ...t,
+    account: byId.get(t.account_id) ?? t.account ?? null,
+  }));
 }
 
 export async function fetchBudgets(month?: Date): Promise<Budget[]> {
@@ -104,23 +120,34 @@ export async function fetchDebts(): Promise<Debt[]> {
 
 export async function fetchRecurring(): Promise<RecurringTransaction[]> {
   const supabase = await createClient();
+  // Avoid ambiguous accounts(*) embed — attach account names via second query.
   const { data, error } = await supabase
     .from("recurring_transactions")
-    .select("*, category:categories(*), account:accounts!recurring_transactions_account_id_fkey(*)")
+    .select("*, category:categories(*)")
     .order("next_due_date");
   if (error) {
-    // Fallback without embed if FK name differs across environments
-    const { data: plain } = await supabase
-      .from("recurring_transactions")
-      .select("*, category:categories(*)")
-      .order("next_due_date");
-    if (!plain) {
-      console.error("fetchRecurring", error.message);
-      return [];
-    }
-    return (plain as RecurringTransaction[]) ?? [];
+    console.error("fetchRecurring", error.message);
+    return [];
   }
-  return (data as RecurringTransaction[]) ?? [];
+  const rows = (data as RecurringTransaction[]) ?? [];
+  if (rows.length === 0) return rows;
+
+  const accountIds = Array.from(
+    new Set(rows.map((r) => r.account_id).filter((id): id is string => Boolean(id)))
+  );
+  if (accountIds.length === 0) return rows;
+
+  const { data: accounts } = await supabase
+    .from("accounts")
+    .select("*")
+    .in("id", accountIds);
+  const byId = new Map(
+    ((accounts as Account[]) ?? []).map((a) => [a.id, a] as const)
+  );
+  return rows.map((r) => ({
+    ...r,
+    account: byId.get(r.account_id) ?? r.account ?? null,
+  }));
 }
 
 export async function fetchRules(): Promise<ClassificationRule[]> {
