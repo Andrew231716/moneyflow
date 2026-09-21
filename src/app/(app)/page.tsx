@@ -25,6 +25,8 @@ import { rankCutPotential } from "@/lib/finance/cut-potential";
 import { calcGoalTrajectories } from "@/lib/finance/goal-trajectory";
 import { subMonths } from "date-fns";
 
+export const dynamic = "force-dynamic";
+
 export default async function DashboardPage() {
   if (!hasSupabaseEnv()) {
     return null;

@@ -42,18 +42,19 @@ export function calcMonthSummary(
   transactions: Transaction[],
   month: Date = new Date()
 ): MonthSummary {
-  const start = startOfMonth(month);
-  const end = endOfMonth(month);
+  const start = format(startOfMonth(month), "yyyy-MM-dd");
+  const end = format(endOfMonth(month), "yyyy-MM-dd");
 
   let income = 0;
   let expense = 0;
 
   for (const tx of transactions) {
     if (tx.type === "transfer") continue;
-    const d = new Date(tx.date);
+    const d = tx.date.slice(0, 10);
     if (d < start || d > end) continue;
-    if (tx.type === "income") income += Number(tx.amount);
-    if (tx.type === "expense") expense += Number(tx.amount);
+    const amount = Math.abs(Number(tx.amount));
+    if (tx.type === "income") income += amount;
+    if (tx.type === "expense") expense += amount;
   }
 
   const savings = income - expense;
@@ -66,8 +67,8 @@ export function calcExpenseByCategory(
   transactions: Transaction[],
   month: Date = new Date()
 ): { categoryId: string | null; name: string; color: string; total: number }[] {
-  const start = startOfMonth(month);
-  const end = endOfMonth(month);
+  const start = format(startOfMonth(month), "yyyy-MM-dd");
+  const end = format(endOfMonth(month), "yyyy-MM-dd");
   const map = new Map<
     string,
     { categoryId: string | null; name: string; color: string; total: number }
@@ -75,16 +76,17 @@ export function calcExpenseByCategory(
 
   for (const tx of transactions) {
     if (tx.type !== "expense") continue;
-    const d = new Date(tx.date);
+    const d = tx.date.slice(0, 10);
     if (d < start || d > end) continue;
     const key = tx.category_id ?? "uncategorized";
+    const amount = Math.abs(Number(tx.amount));
     const existing = map.get(key) ?? {
       categoryId: tx.category_id,
       name: tx.category?.name ?? "Senza categoria",
       color: tx.category?.color ?? "#94a3b8",
       total: 0,
     };
-    existing.total += Number(tx.amount);
+    existing.total += amount;
     map.set(key, existing);
   }
 
@@ -116,20 +118,18 @@ export function calcBudgetProgress(
   transactions: Transaction[],
   month: Date = new Date()
 ): BudgetProgress[] {
-  const start = startOfMonth(month);
-  const end = endOfMonth(month);
+  const start = format(startOfMonth(month), "yyyy-MM-dd");
+  const end = format(endOfMonth(month), "yyyy-MM-dd");
 
   return budgets.map((budget) => {
     const spent = transactions
-      .filter(
-        (tx) =>
-          tx.type === "expense" &&
-          !tx.excluded_from_budget &&
-          tx.category_id === budget.category_id &&
-          new Date(tx.date) >= start &&
-          new Date(tx.date) <= end
-      )
-      .reduce((s, tx) => s + Number(tx.amount), 0);
+      .filter((tx) => {
+        if (tx.type !== "expense" || tx.excluded_from_budget) return false;
+        if (tx.category_id !== budget.category_id) return false;
+        const d = tx.date.slice(0, 10);
+        return d >= start && d <= end;
+      })
+      .reduce((s, tx) => s + Math.abs(Number(tx.amount)), 0);
 
     const amount = Number(budget.amount);
     const percent = amount > 0 ? (spent / amount) * 100 : 0;

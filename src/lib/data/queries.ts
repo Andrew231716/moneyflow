@@ -40,13 +40,38 @@ export async function fetchCategories(): Promise<Category[]> {
 export async function fetchTransactions(monthsBack = 12): Promise<Transaction[]> {
   const supabase = await createClient();
   const from = format(startOfMonth(subMonths(new Date(), monthsBack)), "yyyy-MM-dd");
-  const { data } = await supabase
+  // Disambiguate accounts embed: transactions has both account_id and transfer_account_id FKs.
+  // Prefer column hint (`accounts!account_id`) — more stable than constraint name across envs.
+  const selectWithAccount =
+    "*, category:categories(*), account:accounts!account_id(*)";
+  const selectPlain = "*, category:categories(*)";
+
+  const primary = await supabase
     .from("transactions")
-    .select("*, category:categories(*), account:accounts(*)")
+    .select(selectWithAccount)
     .gte("date", from)
     .order("date", { ascending: false })
     .limit(2000);
-  return (data as Transaction[]) ?? [];
+
+  if (!primary.error) {
+    return (primary.data as Transaction[]) ?? [];
+  }
+
+  console.error("fetchTransactions embed failed:", primary.error.message);
+
+  const fallback = await supabase
+    .from("transactions")
+    .select(selectPlain)
+    .gte("date", from)
+    .order("date", { ascending: false })
+    .limit(2000);
+
+  if (fallback.error) {
+    console.error("fetchTransactions", fallback.error.message);
+    throw new Error("Impossibile caricare i movimenti.");
+  }
+
+  return (fallback.data as Transaction[]) ?? [];
 }
 
 export async function fetchBudgets(month?: Date): Promise<Budget[]> {
@@ -79,10 +104,22 @@ export async function fetchDebts(): Promise<Debt[]> {
 
 export async function fetchRecurring(): Promise<RecurringTransaction[]> {
   const supabase = await createClient();
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from("recurring_transactions")
-    .select("*, category:categories(*), account:accounts(*)")
+    .select("*, category:categories(*), account:accounts!recurring_transactions_account_id_fkey(*)")
     .order("next_due_date");
+  if (error) {
+    // Fallback without embed if FK name differs across environments
+    const { data: plain } = await supabase
+      .from("recurring_transactions")
+      .select("*, category:categories(*)")
+      .order("next_due_date");
+    if (!plain) {
+      console.error("fetchRecurring", error.message);
+      return [];
+    }
+    return (plain as RecurringTransaction[]) ?? [];
+  }
   return (data as RecurringTransaction[]) ?? [];
 }
 
