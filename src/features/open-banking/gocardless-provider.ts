@@ -310,7 +310,7 @@ function mapAccount(a: GcAccount): ProviderAccount {
   };
 }
 
-function mapTx(tx: GcTx): ProviderTransaction {
+function mapTx(tx: GcTx, bookingStatus: "booked" | "pending"): ProviderTransaction {
   const amount = Number(tx.transactionAmount.amount);
   const remittance =
     tx.remittanceInformationUnstructured ??
@@ -328,6 +328,7 @@ function mapTx(tx: GcTx): ProviderTransaction {
     remittanceInformation: remittance,
     debtorName: tx.debtorName ?? null,
     creditorName: tx.creditorName ?? null,
+    bookingStatus,
     raw: tx as unknown as Record<string, unknown>,
   };
 }
@@ -433,10 +434,15 @@ export class GoCardlessProvider implements OpenBankingProvider {
     const qs = q.toString();
     const path = `/accounts/${encodeURIComponent(params.accountId)}/transactions/${qs ? `?${qs}` : ""}`;
     const data = await gcFetch<GcTransactionsResponse>(path);
-    const booked = data.transactions?.booked ?? [];
-    // Pending transactions can change identity and amount before booking.
-    // Persist only booked entries to avoid counting the same payment twice.
-    return booked.map(mapTx);
+    const booked = (data.transactions?.booked ?? []).map((t) =>
+      mapTx(t, "booked")
+    );
+    const pending = (data.transactions?.pending ?? []).map((t) =>
+      mapTx(t, "pending")
+    );
+    // Keep pending visible as "non contabilizzati"; sync promotes/removes them
+    // when the booked counterpart appears.
+    return [...booked, ...pending];
   }
 
   async deleteConnection(connectionId: string): Promise<void> {

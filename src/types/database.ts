@@ -91,6 +91,8 @@ export interface Transaction {
   transfer_pair_id: string | null;
   transfer_account_id: string | null;
   excluded_from_budget: boolean;
+  /** AIS: pending = non contabilizzato; booked / null = contabilizzato */
+  booking_status?: "booked" | "pending" | null;
   original_description: string | null;
   original_merchant: string | null;
   category_source: CategorySource;

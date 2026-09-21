@@ -28,6 +28,23 @@ describe("normalizeProviderTransaction", () => {
     expect(n.providerTransactionId).toBe("tx-1");
     expect(n.merchant).toBe("Esselunga");
     expect(n.fingerprint).toHaveLength(64);
+    expect(n.bookingStatus).toBe("booked");
+  });
+
+  it("maps pending booking status", () => {
+    const tx: ProviderTransaction = {
+      amount: -10,
+      currency: "EUR",
+      valueDate: "2026-03-02",
+      description: "Pending card",
+      bookingStatus: "pending",
+    };
+    const n = normalizeProviderTransaction(tx, {
+      provider: "enablebanking",
+      accountKey: "acc-1",
+    });
+    expect(n.bookingStatus).toBe("pending");
+    expect(n.type).toBe("expense");
   });
 
   it("maps positive amounts to income", () => {

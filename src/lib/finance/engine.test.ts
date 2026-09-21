@@ -76,6 +76,20 @@ describe("financial engine", () => {
     expect(s.savings).toBe(800);
   });
 
+  it("excludes pending bank rows from month summary", () => {
+    const txs = [
+      baseTx({ type: "expense", amount: 100 }),
+      baseTx({
+        id: "2",
+        type: "expense",
+        amount: 50,
+        booking_status: "pending",
+      }),
+    ];
+    const s = calcMonthSummary(txs, new Date("2026-09-15"));
+    expect(s.expense).toBe(100);
+  });
+
   it("maps budget progress states", () => {
     expect(getBudgetState(50)).toBe("ok");
     expect(getBudgetState(75)).toBe("warn");

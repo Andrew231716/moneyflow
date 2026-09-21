@@ -770,30 +770,38 @@ export async function syncConnection(options: {
         provider: conn.provider,
         accountKey: ba.provider_account_id,
       });
+      // Process booked first so pending rows from this batch can be promoted
+      // before we insert new pending duplicates.
+      normalized.sort((a, b) => {
+        if (a.bookingStatus === b.bookingStatus) return 0;
+        return a.bookingStatus === "booked" ? -1 : 1;
+      });
 
       const { data: existingRows, error: existingError } = await supabase
         .from("transactions")
         .select(
-          "id, provider, provider_transaction_id, fingerprint, category_id, description, merchant, notes, manual_override_fields"
+          "id, provider, provider_transaction_id, fingerprint, category_id, description, merchant, notes, manual_override_fields, amount, date, type, booking_status"
         )
         .eq("user_id", userId)
         .eq("bank_account_id", ba.id);
 
       if (existingError) throw new Error("Impossibile verificare i movimenti esistenti.");
 
-      const { byProviderId, byFingerprint } = buildDedupIndexes(
+      const { byProviderId, byFingerprint, pendingRows } = buildDedupIndexes(
         (existingRows ?? []) as Parameters<typeof buildDedupIndexes>[0]
       );
+      // Mutable working list so promotions within the same sync remove candidates.
+      const openPending = [...pendingRows];
 
       const newlyInsertedIds: string[] = [];
 
       for (const n of normalized) {
-        const decision = decideDedup(n, byProviderId, byFingerprint);
+        const decision = decideDedup(n, byProviderId, byFingerprint, openPending);
         if (decision.action === "skip") {
           result.skipped += 1;
           continue;
         }
-        if (decision.action === "update") {
+        if (decision.action === "update" || decision.action === "promote") {
           const { error: updateError } = await supabase
             .from("transactions")
             .update({
@@ -803,10 +811,41 @@ export async function syncConnection(options: {
             .eq("id", decision.existingId)
             .eq("user_id", userId);
           if (updateError) {
-            result.errors.push("Impossibile aggiornare un movimento bancario.");
+            result.errors.push(
+              decision.action === "promote"
+                ? "Impossibile contabilizzare un movimento in sospeso."
+                : "Impossibile aggiornare un movimento bancario."
+            );
             continue;
           }
           result.updated += 1;
+          if (decision.action === "promote") {
+            const idx = openPending.findIndex((p) => p.id === decision.existingId);
+            if (idx >= 0) openPending.splice(idx, 1);
+            // Refresh indexes so later pending/booked rows see the promoted row.
+            const stub = {
+              id: decision.existingId,
+              provider: n.provider,
+              provider_transaction_id:
+                (decision.fields.provider_transaction_id as string | null) ??
+                n.providerTransactionId,
+              fingerprint:
+                (decision.fields.fingerprint as string | null) ?? n.fingerprint,
+              category_id: null,
+              description: n.description,
+              merchant: n.merchant,
+              notes: n.notes,
+              amount: n.amount,
+              date: n.date,
+              type: n.type,
+              booking_status: "booked" as const,
+              manual_override_fields: [],
+            };
+            if (stub.provider_transaction_id) {
+              byProviderId.set(stub.provider_transaction_id, stub);
+            }
+            byFingerprint.set(stub.fingerprint ?? n.fingerprint, stub);
+          }
           continue;
         }
 
@@ -841,6 +880,7 @@ export async function syncConnection(options: {
             fingerprint: n.fingerprint,
             category_id: categoryId,
             category_source: categoryId ? "rule" : "bank",
+            booking_status: n.bookingStatus,
           })
           .select("id")
           .single();
@@ -862,12 +902,17 @@ export async function syncConnection(options: {
             description: n.description,
             merchant: n.merchant,
             notes: n.notes,
+            amount: n.amount,
+            date: n.date,
+            type: n.type,
+            booking_status: n.bookingStatus,
             manual_override_fields: [],
           };
           if (n.providerTransactionId) {
             byProviderId.set(n.providerTransactionId, stub);
           }
           byFingerprint.set(n.fingerprint, stub);
+          if (n.bookingStatus === "pending") openPending.push(stub);
         }
       }
 

@@ -38,6 +38,11 @@ export function isIncomeOrExpense(tx: Transaction): boolean {
   return tx.type === "income" || tx.type === "expense";
 }
 
+/** Pending AIS rows are shown in Movimenti but excluded from totals until booked. */
+export function isBookedForStats(tx: Transaction): boolean {
+  return (tx.booking_status ?? "booked") !== "pending";
+}
+
 export function calcMonthSummary(
   transactions: Transaction[],
   month: Date = new Date()
@@ -50,6 +55,7 @@ export function calcMonthSummary(
 
   for (const tx of transactions) {
     if (tx.type === "transfer") continue;
+    if (!isBookedForStats(tx)) continue;
     const d = tx.date.slice(0, 10);
     if (d < start || d > end) continue;
     const amount = Math.abs(Number(tx.amount));
@@ -76,6 +82,7 @@ export function calcExpenseByCategory(
 
   for (const tx of transactions) {
     if (tx.type !== "expense") continue;
+    if (!isBookedForStats(tx)) continue;
     const d = tx.date.slice(0, 10);
     if (d < start || d > end) continue;
     const key = tx.category_id ?? "uncategorized";
@@ -125,6 +132,7 @@ export function calcBudgetProgress(
     const spent = transactions
       .filter((tx) => {
         if (tx.type !== "expense" || tx.excluded_from_budget) return false;
+        if (!isBookedForStats(tx)) return false;
         if (tx.category_id !== budget.category_id) return false;
         const d = tx.date.slice(0, 10);
         return d >= start && d <= end;
