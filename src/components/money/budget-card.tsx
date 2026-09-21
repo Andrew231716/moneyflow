@@ -1,4 +1,8 @@
+"use client";
+
+import { Pencil, Trash2 } from "lucide-react";
 import { Progress } from "@/components/ui/progress";
+import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { BudgetProgress } from "@/types/database";
 import { MoneyValue } from "./money-value";
@@ -22,10 +26,14 @@ export function BudgetCard({
   progress,
   className,
   compact,
+  onEdit,
+  onDelete,
 }: {
   progress: BudgetProgress;
   className?: string;
   compact?: boolean;
+  onEdit?: () => void;
+  onDelete?: () => void;
 }) {
   const { budget, spent, percent, state } = progress;
   const name = budget.category?.name ?? "Categoria";
@@ -41,17 +49,47 @@ export function BudgetCard({
             </p>
           )}
         </div>
-        <StatusBadge
-          tone={
-            state === "ok"
-              ? "success"
-              : state === "over"
-                ? "danger"
-                : "warning"
-          }
-        >
-          {stateLabel[state]}
-        </StatusBadge>
+        <div className="flex items-center gap-1 shrink-0">
+          {(onEdit || onDelete) && (
+            <>
+              {onEdit && (
+                <Button
+                  type="button"
+                  size="icon"
+                  variant="ghost"
+                  className="size-9 min-h-touch min-w-touch"
+                  aria-label={`Modifica budget ${name}`}
+                  onClick={onEdit}
+                >
+                  <Pencil className="size-4" />
+                </Button>
+              )}
+              {onDelete && (
+                <Button
+                  type="button"
+                  size="icon"
+                  variant="ghost"
+                  className="size-9 min-h-touch min-w-touch text-destructive"
+                  aria-label={`Elimina budget ${name}`}
+                  onClick={onDelete}
+                >
+                  <Trash2 className="size-4" />
+                </Button>
+              )}
+            </>
+          )}
+          <StatusBadge
+            tone={
+              state === "ok"
+                ? "success"
+                : state === "over"
+                  ? "danger"
+                  : "warning"
+            }
+          >
+            {stateLabel[state]}
+          </StatusBadge>
+        </div>
       </div>
       <Progress
         value={Math.min(100, percent)}

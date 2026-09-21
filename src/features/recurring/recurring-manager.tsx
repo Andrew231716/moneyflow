@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import type {
@@ -72,6 +72,14 @@ const RECURRING_EXAMPLES: {
     categoryName: "Abbonamenti",
   },
   {
+    label: "Auto",
+    description: "Auto (rate / bollo / assicurazione)",
+    amount: "150",
+    type: "expense",
+    frequency: "monthly",
+    categoryName: "Auto",
+  },
+  {
     label: "Palestra",
     description: "Abbonamento palestra",
     amount: "40",
@@ -84,7 +92,7 @@ const RECURRING_EXAMPLES: {
 export function RecurringManager({
   items,
   accounts,
-  categories,
+  categories: initialCategories,
 }: {
   items: RecurringTransaction[];
   accounts: Account[];
@@ -92,6 +100,12 @@ export function RecurringManager({
 }) {
   const router = useRouter();
   const totals = calcRecurringTotals(items);
+  const [categories, setCategories] = useState(initialCategories);
+
+  useEffect(() => {
+    setCategories(initialCategories);
+  }, [initialCategories]);
+
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState({
     description: "",
@@ -102,7 +116,67 @@ export function RecurringManager({
     category_id: "",
     next_due_date: new Date().toISOString().slice(0, 10),
   });
+  const [newCategoryName, setNewCategoryName] = useState("");
   const [saving, setSaving] = useState(false);
+  const [creatingCategory, setCreatingCategory] = useState(false);
+
+  const typeCategories = useMemo(
+    () => categories.filter((c) => c.type === form.type),
+    [categories, form.type]
+  );
+
+  async function ensureCategory(
+    name: string,
+    type: "income" | "expense"
+  ): Promise<string | null> {
+    const existing = categories.find(
+      (c) =>
+        c.type === type && c.name.toLowerCase() === name.trim().toLowerCase()
+    );
+    if (existing) return existing.id;
+
+    const supabase = createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) throw new Error("Non autenticato");
+    const { data, error } = await supabase
+      .from("categories")
+      .insert({
+        user_id: user.id,
+        name: name.trim(),
+        type,
+        icon: type === "expense" ? "tag" : "plus-circle",
+        color: type === "expense" ? "#64748b" : "#16a34a",
+        is_system: false,
+      })
+      .select("*")
+      .single();
+    if (error || !data) throw error ?? new Error("Impossibile creare la categoria");
+    setCategories((prev) => [...prev, data as Category]);
+    return data.id as string;
+  }
+
+  async function createCategoryInline() {
+    const name = newCategoryName.trim();
+    if (!name) {
+      toast.error("Scrivi il nome della nuova categoria");
+      return;
+    }
+    setCreatingCategory(true);
+    try {
+      const id = await ensureCategory(name, form.type);
+      if (id) {
+        setForm((f) => ({ ...f, category_id: id }));
+        setNewCategoryName("");
+        toast.success(`Categoria «${name}» aggiunta`);
+      }
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Errore");
+    } finally {
+      setCreatingCategory(false);
+    }
+  }
 
   async function save() {
     setSaving(true);
@@ -133,11 +207,59 @@ export function RecurringManager({
     }
   }
 
+  function applyExample(ex: (typeof RECURRING_EXAMPLES)[number]) {
+    void (async () => {
+      let categoryId = "";
+      if (ex.categoryName) {
+        const hit = categories.find(
+          (c) =>
+            c.type === ex.type &&
+            c.name.toLowerCase() === ex.categoryName!.toLowerCase()
+        );
+        if (hit) categoryId = hit.id;
+        else {
+          try {
+            categoryId = (await ensureCategory(ex.categoryName, ex.type)) ?? "";
+          } catch {
+            categoryId = "";
+          }
+        }
+      }
+      setForm({
+        description: ex.description,
+        amount: ex.amount,
+        type: ex.type,
+        frequency: ex.frequency,
+        account_id: accounts[0]?.id ?? "",
+        category_id: categoryId,
+        next_due_date: new Date().toISOString().slice(0, 10),
+      });
+      setOpen(true);
+    })();
+  }
+
+  const exampleButtons = (
+    <div className="flex flex-wrap justify-center gap-2">
+      {RECURRING_EXAMPLES.map((ex) => (
+        <Button
+          key={ex.label}
+          type="button"
+          size="sm"
+          variant="outline"
+          className="min-h-touch"
+          onClick={() => applyExample(ex)}
+        >
+          {ex.label}
+        </Button>
+      ))}
+    </div>
+  );
+
   return (
     <div className="space-y-5">
       <PageHeader
         title="Ricorrenti"
-        description="Abbonamenti e movimenti periodici"
+        description="Solo pianificazione e stime — non spostano soldi dal conto in automatico"
         actions={
           <Button onClick={() => setOpen(true)} className="min-h-touch">
             Nuovo ricorrente
@@ -145,87 +267,69 @@ export function RecurringManager({
         }
       />
 
-      <div className="mf-surface p-4 flex flex-wrap gap-4 text-sm">
-        <div>
-          <p className="text-xs text-muted-foreground">Mensile netto</p>
-          <MoneyValue
-            amount={totals.monthly}
-            size="md"
-            tone={totals.monthly >= 0 ? "success" : "danger"}
-          />
+      <div className="mf-surface p-4 space-y-2 text-sm">
+        <div className="flex flex-wrap gap-4">
+          <div>
+            <p className="text-xs text-muted-foreground">Mensile netto</p>
+            <MoneyValue
+              amount={totals.monthly}
+              size="md"
+              tone={totals.monthly >= 0 ? "success" : "danger"}
+            />
+          </div>
+          <div>
+            <p className="text-xs text-muted-foreground">Annuo</p>
+            <MoneyValue amount={totals.yearly} size="md" />
+          </div>
         </div>
-        <div>
-          <p className="text-xs text-muted-foreground">Annuo</p>
-          <MoneyValue amount={totals.yearly} size="md" />
-        </div>
+        <p className="text-xs text-muted-foreground leading-relaxed">
+          Alla data di scadenza MoneyFlow <strong>non</strong> accredita né
+          addebita il conto indicato: i ricorrenti servono per previsioni a fine
+          mese e per ricordarti le uscite/entrate fisse. I movimenti reali restano
+          quelli della banca o quelli che inserisci tu.
+        </p>
       </div>
 
       {items.length === 0 ? (
         <EmptyState
           icon={<Repeat className="h-6 w-6" />}
           title="Nessuna ricorrenza"
-          description="Aggiungi affitto, stipendio o abbonamenti. Tocca un esempio per partire."
+          description="Aggiungi affitto, stipendio, auto o abbonamenti. Tocca un esempio per partire."
           action={
             <div className="flex flex-col items-center gap-3">
-              <div className="flex flex-wrap justify-center gap-2">
-                {RECURRING_EXAMPLES.map((ex) => (
-                  <Button
-                    key={ex.label}
-                    type="button"
-                    size="sm"
-                    variant="outline"
-                    className="min-h-touch"
-                    onClick={() => {
-                      const cat = categories.find(
-                        (c) =>
-                          c.type === ex.type &&
-                          c.name.toLowerCase() ===
-                            (ex.categoryName ?? "").toLowerCase()
-                      );
-                      setForm({
-                        description: ex.description,
-                        amount: ex.amount,
-                        type: ex.type,
-                        frequency: ex.frequency,
-                        account_id: accounts[0]?.id ?? "",
-                        category_id: cat?.id ?? "",
-                        next_due_date: new Date().toISOString().slice(0, 10),
-                      });
-                      setOpen(true);
-                    }}
-                  >
-                    {ex.label}
-                  </Button>
-                ))}
-              </div>
+              {exampleButtons}
               <Button onClick={() => setOpen(true)}>Nuovo ricorrente</Button>
             </div>
           }
         />
       ) : (
-        <div className="space-y-2">
-          {items.map((r) => (
-            <div
-              key={r.id}
-              className="mf-surface flex items-center justify-between gap-3 p-4"
-            >
-              <div className="min-w-0">
-                <p className="font-medium truncate">{r.description}</p>
-                <p className="text-xs text-muted-foreground mt-0.5">
-                  Prossimo: {r.next_due_date} · {r.account?.name}
-                </p>
+        <>
+          <div className="flex flex-wrap gap-2">{exampleButtons}</div>
+          <div className="space-y-2">
+            {items.map((r) => (
+              <div
+                key={r.id}
+                className="mf-surface flex items-center justify-between gap-3 p-4"
+              >
+                <div className="min-w-0">
+                  <p className="font-medium truncate">{r.description}</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    Prossimo: {r.next_due_date} · {r.account?.name}
+                    {r.category?.name ? ` · ${r.category.name}` : ""}
+                  </p>
+                </div>
+                <div className="text-right shrink-0 space-y-1">
+                  <MoneyValue
+                    amount={Number(r.amount)}
+                    size="sm"
+                    type={r.type}
+                  />
+                  <Badge variant="secondary">{freqLabels[r.frequency]}</Badge>
+                </div>
               </div>
-              <div className="text-right shrink-0 space-y-1">
-                <MoneyValue
-                  amount={Number(r.amount)}
-                  size="sm"
-                  type={r.type}
-                />
-                <Badge variant="secondary">{freqLabels[r.frequency]}</Badge>
-              </div>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        </>
       )}
 
       <ResponsiveFormShell
@@ -258,7 +362,13 @@ export function RecurringManager({
           <Label>Tipo</Label>
           <Select
             value={form.type}
-            onValueChange={(v) => setForm({ ...form, type: v as "income" | "expense" })}
+            onValueChange={(v) =>
+              setForm({
+                ...form,
+                type: v as "income" | "expense",
+                category_id: "",
+              })
+            }
           >
             <SelectTrigger className="min-h-touch">
               <SelectValue />
@@ -290,7 +400,7 @@ export function RecurringManager({
           </Select>
         </div>
         <div className="space-y-2">
-          <Label>Conto</Label>
+          <Label>Conto (solo riferimento)</Label>
           <Select
             value={form.account_id}
             onValueChange={(v) => setForm({ ...form, account_id: v })}
@@ -320,15 +430,30 @@ export function RecurringManager({
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="__none__">Nessuna</SelectItem>
-              {categories
-                .filter((c) => c.type === form.type)
-                .map((c) => (
-                  <SelectItem key={c.id} value={c.id}>
-                    {c.name}
-                  </SelectItem>
-                ))}
+              {typeCategories.map((c) => (
+                <SelectItem key={c.id} value={c.id}>
+                  {c.name}
+                </SelectItem>
+              ))}
             </SelectContent>
           </Select>
+          <div className="flex gap-2">
+            <Input
+              value={newCategoryName}
+              onChange={(e) => setNewCategoryName(e.target.value)}
+              placeholder="Nuova categoria…"
+              className="min-h-touch"
+            />
+            <Button
+              type="button"
+              variant="outline"
+              className="min-h-touch shrink-0"
+              disabled={creatingCategory || !newCategoryName.trim()}
+              onClick={() => void createCategoryInline()}
+            >
+              {creatingCategory ? "…" : "Aggiungi"}
+            </Button>
+          </div>
         </div>
         <div className="space-y-2">
           <Label>Prossima scadenza</Label>

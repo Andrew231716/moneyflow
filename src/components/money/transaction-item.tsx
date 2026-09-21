@@ -7,10 +7,12 @@ export function TransactionItem({
   transaction: tx,
   className,
   showAccount = true,
+  onClick,
 }: {
   transaction: Transaction;
   className?: string;
   showAccount?: boolean;
+  onClick?: () => void;
 }) {
   const meta = [
     tx.date,
@@ -22,14 +24,8 @@ export function TransactionItem({
     .filter(Boolean)
     .join(" · ");
 
-  return (
-    <div
-      className={cn(
-        "flex items-center justify-between gap-3 rounded-xl px-3 py-3 min-h-touch",
-        "hover:bg-muted/50 transition-colors",
-        className
-      )}
-    >
+  const content = (
+    <>
       <div className="min-w-0 flex items-start gap-2.5">
         {tx.type === "transfer" && (
           <ArrowLeftRight className="h-4 w-4 mt-0.5 text-muted-foreground shrink-0" />
@@ -45,6 +41,34 @@ export function TransactionItem({
         size="sm"
         className="shrink-0"
       />
+    </>
+  );
+
+  if (onClick) {
+    return (
+      <button
+        type="button"
+        onClick={onClick}
+        className={cn(
+          "flex w-full items-center justify-between gap-3 rounded-xl px-3 py-3 min-h-touch text-left",
+          "hover:bg-muted/50 transition-colors",
+          className
+        )}
+      >
+        {content}
+      </button>
+    );
+  }
+
+  return (
+    <div
+      className={cn(
+        "flex items-center justify-between gap-3 rounded-xl px-3 py-3 min-h-touch",
+        "hover:bg-muted/50 transition-colors",
+        className
+      )}
+    >
+      {content}
     </div>
   );
 }
