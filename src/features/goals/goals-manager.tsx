@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Target } from "lucide-react";
 import { toast } from "sonner";
 import type { Account, Goal } from "@/types/database";
+import type { GoalSavingsPlan } from "@/lib/finance/goal-savings-plan";
 import { createClient } from "@/lib/supabase/client";
 import {
   adjustAccountBalance,
@@ -28,14 +29,17 @@ import {
   EmptyState,
   AmountInput,
   ResponsiveFormShell,
+  GoalSavingsPlanCard,
 } from "@/components/money";
 
 export function GoalsManager({
   goals,
   savingsAccounts = [],
+  savingsPlans = [],
 }: {
   goals: Goal[];
   savingsAccounts?: Account[];
+  savingsPlans?: GoalSavingsPlan[];
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -171,7 +175,7 @@ export function GoalsManager({
     <div className="space-y-5">
       <PageHeader
         title="Obiettivi"
-        description="Raggiunto = fondi ancora disponibili · Saldato = già spesi"
+        description="Es. viaggio in Islanda: target + scadenza → piano di quanto mettere da parte e dove tagliare"
         actions={
           <Button onClick={() => setOpen(true)} className="min-h-touch">
             Nuovo obiettivo
@@ -179,11 +183,19 @@ export function GoalsManager({
         }
       />
 
+      {savingsPlans.length > 0 && (
+        <div className="space-y-3">
+          {savingsPlans.slice(0, 3).map((plan) => (
+            <GoalSavingsPlanCard key={plan.goalId} plan={plan} />
+          ))}
+        </div>
+      )}
+
       {goals.length === 0 ? (
         <EmptyState
           icon={<Target className="h-6 w-6" />}
           title="Nessun obiettivo"
-          description="Crea un obiettivo di risparmio con target e scadenza."
+          description="Crea un obiettivo con importo e data (es. Islanda 1.200 € tra 4 mesi) per ricevere il piano di risparmio."
           action={<Button onClick={() => setOpen(true)}>Nuovo obiettivo</Button>}
         />
       ) : (
@@ -249,13 +261,17 @@ export function GoalsManager({
           onChange={(current_amount) => setForm({ ...form, current_amount })}
         />
         <div className="space-y-2">
-          <Label>Scadenza</Label>
+          <Label>Scadenza (consigliata per il piano)</Label>
           <Input
             type="date"
             value={form.deadline}
             onChange={(e) => setForm({ ...form, deadline: e.target.value })}
             className="min-h-touch"
           />
+          <p className="text-xs text-muted-foreground">
+            Con scadenza calcoliamo quanto mettere da parte al mese e suggeriamo
+            da quali categorie tagliare (es. ristoranti/abbonamenti).
+          </p>
         </div>
       </ResponsiveFormShell>
 

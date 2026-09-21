@@ -9,6 +9,7 @@ export { GoalCard } from "./goal-card";
 export { InsightCard } from "./insight-card";
 export { CutPotentialSection } from "./cut-potential-section";
 export { GoalMilestones, GoalTrajectoryCard } from "./goal-milestones";
+export { GoalSavingsPlanCard } from "./goal-savings-plan-card";
 export { EmptyState } from "./empty-state";
 export { QuickActions, defaultQuickActions } from "./quick-actions";
 export type { QuickActionItem } from "./quick-actions";

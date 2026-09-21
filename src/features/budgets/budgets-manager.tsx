@@ -41,15 +41,31 @@ export function BudgetsManager({
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [categoryId, setCategoryId] = useState("");
   const [amount, setAmount] = useState("");
   const [saving, setSaving] = useState(false);
   const [quickSaving, setQuickSaving] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   const existingCategoryIds = new Set(progress.map((p) => p.budget.category_id));
   const suggestions = topExpenses
     .filter((e) => e.categoryId && !existingCategoryIds.has(e.categoryId))
     .slice(0, 5);
+
+  function openCreate() {
+    setEditingId(null);
+    setCategoryId("");
+    setAmount("");
+    setOpen(true);
+  }
+
+  function openEdit(p: BudgetProgress) {
+    setEditingId(p.budget.id);
+    setCategoryId(p.budget.category_id);
+    setAmount(String(Number(p.budget.amount)));
+    setOpen(true);
+  }
 
   async function save() {
     setSaving(true);
@@ -59,23 +75,67 @@ export function BudgetsManager({
         data: { user },
       } = await supabase.auth.getUser();
       if (!user) throw new Error("Non autenticato");
-      const { error } = await supabase.from("budgets").upsert(
-        {
-          user_id: user.id,
-          category_id: categoryId,
-          amount: Number.parseFloat(amount.replace(",", ".")),
-          month: toMonthStart(new Date()),
-        },
-        { onConflict: "user_id,category_id,month" }
-      );
-      if (error) throw error;
-      toast.success("Budget salvato");
+      const parsed = Number.parseFloat(amount.replace(",", "."));
+      if (!categoryId || !parsed || parsed <= 0) {
+        throw new Error("Categoria e importo obbligatori");
+      }
+
+      if (editingId) {
+        const { error } = await supabase
+          .from("budgets")
+          .update({
+            category_id: categoryId,
+            amount: parsed,
+          })
+          .eq("id", editingId)
+          .eq("user_id", user.id);
+        if (error) throw error;
+        toast.success("Budget aggiornato");
+      } else {
+        const { error } = await supabase.from("budgets").upsert(
+          {
+            user_id: user.id,
+            category_id: categoryId,
+            amount: parsed,
+            month: toMonthStart(new Date()),
+          },
+          { onConflict: "user_id,category_id,month" }
+        );
+        if (error) throw error;
+        toast.success("Budget salvato");
+      }
       setOpen(false);
+      setEditingId(null);
       router.refresh();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Errore");
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function removeBudget(p: BudgetProgress) {
+    const name = p.budget.category?.name ?? "questo budget";
+    if (!window.confirm(`Eliminare il budget «${name}»?`)) return;
+    setDeletingId(p.budget.id);
+    try {
+      const supabase = createClient();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (!user) throw new Error("Non autenticato");
+      const { error } = await supabase
+        .from("budgets")
+        .delete()
+        .eq("id", p.budget.id)
+        .eq("user_id", user.id);
+      if (error) throw error;
+      toast.success("Budget eliminato");
+      router.refresh();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Errore");
+    } finally {
+      setDeletingId(null);
     }
   }
 
@@ -113,6 +173,7 @@ export function BudgetsManager({
 
   function openFromSuggestion(s: TopExpense) {
     if (!s.categoryId) return;
+    setEditingId(null);
     setCategoryId(s.categoryId);
     setAmount(String(Math.max(10, Math.ceil((s.total * 1.1) / 10) * 10)));
     setOpen(true);
@@ -122,7 +183,7 @@ export function BudgetsManager({
     <div className="space-y-5">
       <PageHeader
         title="Budget"
-        description="Limiti di spesa per categoria"
+        description="Limiti di spesa per categoria — puoi modificarli o eliminarli"
         actions={
           <div className="flex flex-wrap gap-2">
             {suggestions.length > 0 && (
@@ -136,7 +197,7 @@ export function BudgetsManager({
                 {quickSaving ? "Creazione…" : "Setup da top spese"}
               </Button>
             )}
-            <Button onClick={() => setOpen(true)} className="min-h-touch">
+            <Button onClick={openCreate} className="min-h-touch">
               Nuovo budget
             </Button>
           </div>
@@ -193,29 +254,39 @@ export function BudgetsManager({
                   Setup da top spese
                 </Button>
               )}
-              <Button onClick={() => setOpen(true)}>Nuovo budget</Button>
+              <Button onClick={openCreate}>Nuovo budget</Button>
             </div>
           }
         />
       ) : (
         <div className="grid gap-3 sm:grid-cols-2">
           {progress.map((b) => (
-            <BudgetCard key={b.budget.id} progress={b} />
+            <BudgetCard
+              key={b.budget.id}
+              progress={b}
+              onEdit={() => openEdit(b)}
+              onDelete={
+                deletingId === b.budget.id ? undefined : () => void removeBudget(b)
+              }
+            />
           ))}
         </div>
       )}
 
       <ResponsiveFormShell
         open={open}
-        onOpenChange={setOpen}
-        title="Budget mensile"
+        onOpenChange={(v) => {
+          setOpen(v);
+          if (!v) setEditingId(null);
+        }}
+        title={editingId ? "Modifica budget" : "Budget mensile"}
         footer={
           <Button
             onClick={save}
             disabled={saving || !categoryId || !amount}
             className="w-full sm:w-auto min-h-touch"
           >
-            {saving ? "Salvataggio…" : "Salva"}
+            {saving ? "Salvataggio…" : editingId ? "Aggiorna" : "Salva"}
           </Button>
         }
       >

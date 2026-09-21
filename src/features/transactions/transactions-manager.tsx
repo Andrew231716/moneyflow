@@ -14,6 +14,7 @@ import {
 } from "@/lib/data/mutations";
 import { classifyDescription } from "@/lib/finance/classification";
 import type { ClassificationRule } from "@/types/database";
+import { addManualOverrides } from "@/features/open-banking/deduplication";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -60,6 +61,7 @@ export function TransactionsManager({
   const [filter, setFilter] = useState<"all" | TransactionType>("all");
   const [categoryFilter, setCategoryFilter] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
+  const [editing, setEditing] = useState<Transaction | null>(null);
   const [txType, setTxType] = useState<TransactionType>("expense");
   const [form, setForm] = useState({
     amount: "",
@@ -68,6 +70,10 @@ export function TransactionsManager({
     transfer_account_id: accounts[1]?.id ?? "",
     category_id: "",
     date: new Date().toISOString().slice(0, 10),
+  });
+  const [editForm, setEditForm] = useState({
+    description: "",
+    category_id: "",
   });
   const [saving, setSaving] = useState(false);
 
@@ -100,6 +106,71 @@ export function TransactionsManager({
     }
     return list;
   }, [transactions, filter, categoryFilter]);
+
+  function openEdit(tx: Transaction) {
+    if (tx.type === "transfer") {
+      toast.message("I trasferimenti non si modificano da qui.");
+      return;
+    }
+    setEditing(tx);
+    setEditForm({
+      description: tx.description ?? "",
+      category_id: tx.category_id ?? "",
+    });
+  }
+
+  async function saveEdit() {
+    if (!editing) return;
+    setSaving(true);
+    try {
+      const supabase = createClient();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (!user) throw new Error("Non autenticato");
+      const description = editForm.description.trim();
+      if (!description) throw new Error("Inserisci un nome per il movimento");
+
+      const categoryId = editForm.category_id || null;
+      const overrides = addManualOverrides(editing.manual_override_fields, [
+        "description",
+        "category_id",
+      ]);
+
+      const { data, error } = await supabase
+        .from("transactions")
+        .update({
+          description,
+          category_id: categoryId,
+          category_source: "manual",
+          manual_category_override: true,
+          manual_description_override: true,
+          manual_override_fields: overrides,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", editing.id)
+        .eq("user_id", user.id)
+        .select()
+        .single();
+      if (error) throw error;
+
+      await writeAudit({
+        entity_type: "transaction",
+        entity_id: editing.id,
+        action: "update",
+        before_data: editing as unknown as Record<string, unknown>,
+        after_data: data as unknown as Record<string, unknown>,
+      });
+
+      toast.success("Movimento aggiornato");
+      setEditing(null);
+      router.refresh();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Errore");
+    } finally {
+      setSaving(false);
+    }
+  }
 
   async function save() {
     setSaving(true);
@@ -199,7 +270,7 @@ export function TransactionsManager({
     <div className="space-y-5">
       <PageHeader
         title="Movimenti"
-        description="Entrate, uscite e trasferimenti"
+        description="Tocca un movimento per cambiare nome o categoria"
         actions={
           <>
             <Button asChild variant="outline" size="sm" className="min-h-touch">
@@ -271,7 +342,13 @@ export function TransactionsManager({
           </TableHeader>
           <TableBody>
             {filtered.map((tx) => (
-              <TableRow key={tx.id}>
+              <TableRow
+                key={tx.id}
+                className={tx.type !== "transfer" ? "cursor-pointer" : undefined}
+                onClick={() => {
+                  if (tx.type !== "transfer") openEdit(tx);
+                }}
+              >
                 <TableCell className="whitespace-nowrap">{tx.date}</TableCell>
                 <TableCell>
                   <div className="flex items-center gap-2">
@@ -321,7 +398,11 @@ export function TransactionsManager({
 
       <div className="md:hidden mf-surface divide-y divide-border/60 py-1">
         {filtered.map((tx) => (
-          <TransactionItem key={tx.id} transaction={tx} />
+          <TransactionItem
+            key={tx.id}
+            transaction={tx}
+            onClick={tx.type === "transfer" ? undefined : () => openEdit(tx)}
+          />
         ))}
         {filtered.length === 0 && (
           <EmptyState
@@ -445,6 +526,76 @@ export function TransactionsManager({
           />
         </div>
       </ResponsiveFormShell>
+
+      <ResponsiveFormShell
+        open={Boolean(editing)}
+        onOpenChange={(v) => {
+          if (!v) setEditing(null);
+        }}
+        title="Modifica movimento"
+        footer={
+          <Button
+            onClick={() => void saveEdit()}
+            disabled={saving || !editForm.description.trim()}
+            className="w-full sm:w-auto min-h-touch"
+          >
+            {saving ? "Salvataggio…" : "Aggiorna"}
+          </Button>
+        }
+      >
+        <div className="space-y-2">
+          <Label>Nome movimento</Label>
+          <Input
+            value={editForm.description}
+            onChange={(e) =>
+              setEditForm({ ...editForm, description: e.target.value })
+            }
+            className="min-h-touch"
+          />
+        </div>
+        <div className="space-y-2">
+          <Label>Categoria</Label>
+          <Select
+            value={editForm.category_id || "__none__"}
+            onValueChange={(v) =>
+              setEditForm({
+                ...editForm,
+                category_id: v === "__none__" ? "" : v,
+              })
+            }
+          >
+            <SelectTrigger className="min-h-touch">
+              <SelectValue placeholder="Seleziona" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="__none__">Senza categoria</SelectItem>
+              {categories
+                .filter((c) => c.type === (editing?.type ?? "expense"))
+                .map((c) => (
+                  <SelectItem key={c.id} value={c.id}>
+                    {c.name}
+                  </SelectItem>
+                ))}
+            </SelectContent>
+          </Select>
+        </div>
+        {editing && (
+          <p className="text-xs text-muted-foreground">
+            {editing.date} · {formatAmountHint(editing)}
+            {editing.source === "bank"
+              ? " · Le modifiche restano anche dopo la sync banca"
+              : null}
+          </p>
+        )}
+      </ResponsiveFormShell>
     </div>
   );
+}
+
+function formatAmountHint(tx: Transaction): string {
+  const n = Number(tx.amount);
+  return new Intl.NumberFormat("it-IT", {
+    style: "currency",
+    currency: "EUR",
+  }).format(n);
 }
