@@ -335,11 +335,19 @@ function isBookedStatus(status: string | null | undefined): boolean {
 
 function isPendingStatus(status: string | null | undefined): boolean {
   if (!status) return false;
-  const s = status.toUpperCase();
-  return s === "PDNG" || s === "PENDING";
+  const s = status.toUpperCase().replace(/\s+/g, "");
+  return (
+    s === "PDNG" ||
+    s === "PENDING" ||
+    s === "PNDG" ||
+    s.startsWith("PEND")
+  );
 }
 
-function mapTx(tx: EbTransaction): ProviderTransaction {
+function mapTx(
+  tx: EbTransaction,
+  forcePending = false
+): ProviderTransaction {
   const rawAmount = parseEbAmount(tx.transaction_amount?.amount ?? 0);
   const indicator = tx.credit_debit_indicator;
   // Prefer signed amount: CRDT positive, DBIT negative when amount is absolute.
@@ -348,7 +356,7 @@ function mapTx(tx: EbTransaction): ProviderTransaction {
   if (indicator === "CRDT" && amount < 0) amount = Math.abs(amount);
 
   const remittance = tx.remittance_information?.filter(Boolean).join(" ") || null;
-  const pending = isPendingStatus(tx.status);
+  const pending = forcePending || isPendingStatus(tx.status);
 
   return {
     id: tx.entry_reference ?? tx.transaction_id ?? null,
@@ -540,18 +548,28 @@ export class EnableBankingProvider implements OpenBankingProvider {
     params: GetTransactionsParams
   ): Promise<ProviderTransaction[]> {
     // Freeze query params once — continuation_key requires identical GET params
-    // on every page (Enable Banking FAQ). Do not send transaction_status: some
-    // ASPSPs (incl. Intesa) embed it in the continuation key inconsistently and
-    // return 422 WRONG_REQUEST_PARAMETERS on page 2+. Filter BOOK client-side.
+    // on every page (Enable Banking FAQ). Do not send transaction_status on the
+    // booked stream: some ASPSPs (incl. Intesa) embed it in the continuation key
+    // inconsistently and return 422 WRONG_REQUEST_PARAMETERS on page 2+.
+    // Pending (PDNG) are fetched separately as a single page below.
     const q = new URLSearchParams();
     if (params.dateFrom) q.set("date_from", params.dateFrom);
     if (params.dateTo) q.set("date_to", params.dateTo);
     const basePath = `/accounts/${encodeURIComponent(params.accountId)}/transactions`;
 
     const all: ProviderTransaction[] = [];
+    const seenIds = new Set<string>();
     let continuation: string | null = null;
     let pages = 0;
     const maxPages = Math.max(1, Math.min(params.maxPages ?? DEFAULT_TX_MAX_PAGES, 50));
+
+    const pushTx = (tx: ProviderTransaction) => {
+      if (tx.id) {
+        if (seenIds.has(tx.id)) return;
+        seenIds.add(tx.id);
+      }
+      all.push(tx);
+    };
 
     do {
       pages += 1;
@@ -593,9 +611,27 @@ export class EnableBankingProvider implements OpenBankingProvider {
       const kept = (data.transactions ?? []).filter(
         (t: EbTransaction) => isBookedStatus(t.status) || isPendingStatus(t.status)
       );
-      all.push(...kept.map(mapTx));
+      for (const t of kept) pushTx(mapTx(t));
       continuation = data.continuation_key ?? null;
     } while (continuation);
+
+    // Intesa / several ASPSPs omit PDNG from the default stream. One dedicated
+    // single-page call (no continuation) is safe with transaction_status=PDNG.
+    try {
+      await sleep(TX_PAGE_DELAY_MS);
+      const pendingQuery = new URLSearchParams(q);
+      pendingQuery.set("transaction_status", "PDNG");
+      const pendingPath = `${basePath}?${pendingQuery.toString()}`;
+      const pendingData = await ebFetch<{
+        transactions?: EbTransaction[];
+      }>(pendingPath, {}, { timeoutMs: 20_000, maxRetries: 1 });
+      for (const t of pendingData.transactions ?? []) {
+        // Endpoint already filters PDNG; force pending even if status is blank.
+        pushTx(mapTx(t, true));
+      }
+    } catch {
+      // Pending is best-effort — never fail the whole sync if PDNG call errors.
+    }
 
     return all;
   }

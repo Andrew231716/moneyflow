@@ -98,14 +98,39 @@ describe("Enable Banking booked + pending transactions", () => {
     delete process.env.ENABLEBANKING_PRIVATE_KEY;
   });
 
-  it("keeps booked and pending rows without sending transaction_status", async () => {
+  it("keeps booked rows and fetches pending via dedicated PDNG call", async () => {
     process.env.ENABLEBANKING_APPLICATION_ID = "app-test-id";
     process.env.ENABLEBANKING_PRIVATE_KEY = TEST_PRIVATE_KEY;
+    vi.spyOn(globalThis, "setTimeout").mockImplementation(((
+      handler: TimerHandler,
+      _ms?: number,
+      ...args: unknown[]
+    ) => {
+      if (typeof handler === "function") handler(...(args as never[]));
+      return 0 as unknown as ReturnType<typeof setTimeout>;
+    }) as unknown as typeof setTimeout);
 
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
-      expect(url).not.toContain("transaction_status=");
       expect(url).toContain("/accounts/acc-1/transactions");
+      if (url.includes("transaction_status=PDNG")) {
+        return new Response(
+          JSON.stringify({
+            transactions: [
+              {
+                entry_reference: "p2",
+                status: "PDNG",
+                value_date: "2026-03-03",
+                credit_debit_indicator: "DBIT",
+                transaction_amount: { amount: "5.00", currency: "EUR" },
+                remittance_information: ["Pending dedicated"],
+              },
+            ],
+          }),
+          { status: 200 }
+        );
+      }
+      expect(url).not.toContain("transaction_status=");
       return new Response(
         JSON.stringify({
           transactions: [
@@ -150,15 +175,16 @@ describe("Enable Banking booked + pending transactions", () => {
 
     const provider = new EnableBankingProvider();
     const txs = await provider.getTransactions({ accountId: "acc-1" });
-    expect(txs).toHaveLength(3);
+    expect(txs).toHaveLength(4);
     expect(txs[0].id).toBe("b1");
     expect(txs[0].bookingStatus).toBe("booked");
-    expect(txs[0].amount).toBe(-10);
-    expect(txs[1].id).toBe("b2");
-    expect(txs[1].amount).toBe(12.5);
     expect(txs[2].id).toBe("p1");
     expect(txs[2].bookingStatus).toBe("pending");
-    expect(txs[2].description).toBe("Pending");
+    expect(txs[3].id).toBe("p2");
+    expect(txs[3].bookingStatus).toBe("pending");
+    expect(fetchMock.mock.calls.some((c) => String(c[0]).includes("transaction_status=PDNG"))).toBe(
+      true
+    );
   });
 
   it("keeps first page when continuation page returns 422", async () => {

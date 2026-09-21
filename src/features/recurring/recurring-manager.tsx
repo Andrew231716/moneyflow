@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import { Pencil, Trash2, Repeat } from "lucide-react";
 import { toast } from "sonner";
 import type {
   Account,
@@ -29,7 +30,6 @@ import {
   AmountInput,
   ResponsiveFormShell,
 } from "@/components/money";
-import { Repeat } from "lucide-react";
 
 const freqLabels: Record<RecurringFrequency, string> = {
   weekly: "Settimanale",
@@ -38,6 +38,16 @@ const freqLabels: Record<RecurringFrequency, string> = {
   semiannual: "Semestrale",
   yearly: "Annuale",
 };
+
+const emptyForm = (accounts: Account[]) => ({
+  description: "",
+  amount: "",
+  type: "expense" as "income" | "expense",
+  frequency: "monthly" as RecurringFrequency,
+  account_id: accounts[0]?.id ?? "",
+  category_id: "",
+  next_due_date: new Date().toISOString().slice(0, 10),
+});
 
 const RECURRING_EXAMPLES: {
   label: string;
@@ -107,23 +117,37 @@ export function RecurringManager({
   }, [initialCategories]);
 
   const [open, setOpen] = useState(false);
-  const [form, setForm] = useState({
-    description: "",
-    amount: "",
-    type: "expense" as "income" | "expense",
-    frequency: "monthly" as RecurringFrequency,
-    account_id: accounts[0]?.id ?? "",
-    category_id: "",
-    next_due_date: new Date().toISOString().slice(0, 10),
-  });
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [form, setForm] = useState(() => emptyForm(accounts));
   const [newCategoryName, setNewCategoryName] = useState("");
   const [saving, setSaving] = useState(false);
   const [creatingCategory, setCreatingCategory] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   const typeCategories = useMemo(
     () => categories.filter((c) => c.type === form.type),
     [categories, form.type]
   );
+
+  function openCreate() {
+    setEditingId(null);
+    setForm(emptyForm(accounts));
+    setOpen(true);
+  }
+
+  function openEdit(item: RecurringTransaction) {
+    setEditingId(item.id);
+    setForm({
+      description: item.description,
+      amount: String(Number(item.amount)),
+      type: item.type,
+      frequency: item.frequency,
+      account_id: item.account_id,
+      category_id: item.category_id ?? "",
+      next_due_date: item.next_due_date.slice(0, 10),
+    });
+    setOpen(true);
+  }
 
   async function ensureCategory(
     name: string,
@@ -186,24 +210,69 @@ export function RecurringManager({
         data: { user },
       } = await supabase.auth.getUser();
       if (!user) throw new Error("Non autenticato");
-      const { error } = await supabase.from("recurring_transactions").insert({
-        user_id: user.id,
-        description: form.description,
-        amount: Number.parseFloat(form.amount.replace(",", ".")),
+      const amount = Number.parseFloat(form.amount.replace(",", "."));
+      if (!form.description.trim() || !amount || amount <= 0) {
+        throw new Error("Descrizione e importo obbligatori");
+      }
+      if (!form.account_id) throw new Error("Seleziona un conto");
+
+      const payload = {
+        description: form.description.trim(),
+        amount,
         type: form.type,
         frequency: form.frequency,
         account_id: form.account_id,
         category_id: form.category_id || null,
         next_due_date: form.next_due_date,
-      });
-      if (error) throw error;
-      toast.success("Ricorrente creato");
+      };
+
+      if (editingId) {
+        const { error } = await supabase
+          .from("recurring_transactions")
+          .update(payload)
+          .eq("id", editingId)
+          .eq("user_id", user.id);
+        if (error) throw error;
+        toast.success("Ricorrente aggiornato");
+      } else {
+        const { error } = await supabase.from("recurring_transactions").insert({
+          user_id: user.id,
+          ...payload,
+        });
+        if (error) throw error;
+        toast.success("Ricorrente creato");
+      }
       setOpen(false);
+      setEditingId(null);
       router.refresh();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Errore");
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function removeItem(item: RecurringTransaction) {
+    if (!window.confirm(`Eliminare «${item.description}»?`)) return;
+    setDeletingId(item.id);
+    try {
+      const supabase = createClient();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (!user) throw new Error("Non autenticato");
+      const { error } = await supabase
+        .from("recurring_transactions")
+        .delete()
+        .eq("id", item.id)
+        .eq("user_id", user.id);
+      if (error) throw error;
+      toast.success("Ricorrente eliminato");
+      router.refresh();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Errore");
+    } finally {
+      setDeletingId(null);
     }
   }
 
@@ -225,6 +294,7 @@ export function RecurringManager({
           }
         }
       }
+      setEditingId(null);
       setForm({
         description: ex.description,
         amount: ex.amount,
@@ -259,9 +329,9 @@ export function RecurringManager({
     <div className="space-y-5">
       <PageHeader
         title="Ricorrenti"
-        description="Solo pianificazione e stime — non spostano soldi dal conto in automatico"
+        description="Tocca modifica per cambiare importo, data o categoria — non spostano soldi da soli"
         actions={
-          <Button onClick={() => setOpen(true)} className="min-h-touch">
+          <Button onClick={openCreate} className="min-h-touch">
             Nuovo ricorrente
           </Button>
         }
@@ -285,8 +355,7 @@ export function RecurringManager({
         <p className="text-xs text-muted-foreground leading-relaxed">
           Alla data di scadenza MoneyFlow <strong>non</strong> accredita né
           addebita il conto indicato: i ricorrenti servono per previsioni a fine
-          mese e per ricordarti le uscite/entrate fisse. I movimenti reali restano
-          quelli della banca o quelli che inserisci tu.
+          mese e per ricordarti le uscite/entrate fisse.
         </p>
       </div>
 
@@ -298,7 +367,7 @@ export function RecurringManager({
           action={
             <div className="flex flex-col items-center gap-3">
               {exampleButtons}
-              <Button onClick={() => setOpen(true)}>Nuovo ricorrente</Button>
+              <Button onClick={openCreate}>Nuovo ricorrente</Button>
             </div>
           }
         />
@@ -318,13 +387,36 @@ export function RecurringManager({
                     {r.category?.name ? ` · ${r.category.name}` : ""}
                   </p>
                 </div>
-                <div className="text-right shrink-0 space-y-1">
-                  <MoneyValue
-                    amount={Number(r.amount)}
-                    size="sm"
-                    type={r.type}
-                  />
-                  <Badge variant="secondary">{freqLabels[r.frequency]}</Badge>
+                <div className="flex items-center gap-1 shrink-0">
+                  <div className="text-right space-y-1 mr-1">
+                    <MoneyValue
+                      amount={Number(r.amount)}
+                      size="sm"
+                      type={r.type}
+                    />
+                    <Badge variant="secondary">{freqLabels[r.frequency]}</Badge>
+                  </div>
+                  <Button
+                    type="button"
+                    size="icon"
+                    variant="ghost"
+                    className="size-9 min-h-touch min-w-touch"
+                    aria-label={`Modifica ${r.description}`}
+                    onClick={() => openEdit(r)}
+                  >
+                    <Pencil className="size-4" />
+                  </Button>
+                  <Button
+                    type="button"
+                    size="icon"
+                    variant="ghost"
+                    className="size-9 min-h-touch min-w-touch text-destructive"
+                    aria-label={`Elimina ${r.description}`}
+                    disabled={deletingId === r.id}
+                    onClick={() => void removeItem(r)}
+                  >
+                    <Trash2 className="size-4" />
+                  </Button>
                 </div>
               </div>
             ))}
@@ -334,15 +426,18 @@ export function RecurringManager({
 
       <ResponsiveFormShell
         open={open}
-        onOpenChange={setOpen}
-        title="Movimento ricorrente"
+        onOpenChange={(v) => {
+          setOpen(v);
+          if (!v) setEditingId(null);
+        }}
+        title={editingId ? "Modifica ricorrente" : "Movimento ricorrente"}
         footer={
           <Button
-            onClick={save}
+            onClick={() => void save()}
             disabled={saving || !form.description || !form.amount}
             className="w-full sm:w-auto min-h-touch"
           >
-            {saving ? "Salvataggio…" : "Salva"}
+            {saving ? "Salvataggio…" : editingId ? "Aggiorna" : "Salva"}
           </Button>
         }
       >
