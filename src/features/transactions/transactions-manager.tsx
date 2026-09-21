@@ -58,7 +58,7 @@ export function TransactionsManager({
 }) {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const [filter, setFilter] = useState<"all" | TransactionType>("all");
+  const [filter, setFilter] = useState<"all" | TransactionType | "pending">("all");
   const [categoryFilter, setCategoryFilter] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Transaction | null>(null);
@@ -92,11 +92,22 @@ export function TransactionsManager({
     }
   }, [searchParams, router]);
 
+  const pendingCount = useMemo(
+    () =>
+      transactions.filter((t) => (t.booking_status ?? "booked") === "pending")
+        .length,
+    [transactions]
+  );
+
   const filtered = useMemo(() => {
-    let list =
-      filter === "all"
-        ? transactions
-        : transactions.filter((t) => t.type === filter);
+    let list = transactions;
+    if (filter === "pending") {
+      list = transactions.filter(
+        (t) => (t.booking_status ?? "booked") === "pending"
+      );
+    } else if (filter !== "all") {
+      list = transactions.filter((t) => t.type === filter);
+    }
     if (categoryFilter) {
       list = list.filter((t) =>
         categoryFilter === "uncategorized"
@@ -270,7 +281,11 @@ export function TransactionsManager({
     <div className="space-y-5">
       <PageHeader
         title="Movimenti"
-        description="Tocca un movimento per cambiare nome o categoria"
+        description={
+          pendingCount > 0
+            ? `Tocca per modificare · ${pendingCount} non contabilizzat${pendingCount === 1 ? "o" : "i"}`
+            : "Tocca un movimento per cambiare nome o categoria"
+        }
         actions={
           <>
             <Button asChild variant="outline" size="sm" className="min-h-touch">
@@ -304,6 +319,9 @@ export function TransactionsManager({
           <TabsTrigger value="expense" className="min-h-10">Uscite</TabsTrigger>
           <TabsTrigger value="income" className="min-h-10">Entrate</TabsTrigger>
           <TabsTrigger value="transfer" className="min-h-10">Trasferimenti</TabsTrigger>
+          <TabsTrigger value="pending" className="min-h-10">
+            In sospeso{pendingCount > 0 ? ` (${pendingCount})` : ""}
+          </TabsTrigger>
         </TabsList>
       </Tabs>
 
@@ -384,7 +402,11 @@ export function TransactionsManager({
           <EmptyState
             className="border-0 shadow-none rounded-none"
             title="Nessun movimento"
-            description="Prova a cambiare filtro, sincronizza la banca da Conti, oppure aggiungi un movimento."
+            description={
+              filter === "pending"
+                ? "Dopo una sync, qui compaiono i movimenti che la banca non ha ancora contabilizzato. Se la lista è vuota, Intesa non ha inviato pending in questo momento."
+                : "Prova a cambiare filtro, sincronizza la banca da Conti, oppure aggiungi un movimento."
+            }
             action={
               <div className="flex flex-wrap justify-center gap-2">
                 <Button asChild size="sm" variant="outline">
@@ -411,7 +433,11 @@ export function TransactionsManager({
           <EmptyState
             className="border-0 shadow-none"
             title="Nessun movimento"
-            description="Sincronizza la banca o aggiungi la prima spesa."
+            description={
+              filter === "pending"
+                ? "Nessun pending dalla banca in questo momento. Riprova dopo una sync."
+                : "Sincronizza la banca o aggiungi la prima spesa."
+            }
             action={
               <div className="flex flex-wrap justify-center gap-2">
                 <Button asChild size="sm" variant="outline">
