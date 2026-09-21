@@ -313,8 +313,28 @@ function consentValidUntilIso(maximumConsentValiditySec?: number | null): string
   return new Date(Date.now() + cappedSec * 1000).toISOString();
 }
 
+/** Parse AIS amounts that may use comma decimals (e.g. "12,50" / "1.234,56"). */
+export function parseEbAmount(raw: string | number | null | undefined): number {
+  if (typeof raw === "number") return Number.isFinite(raw) ? raw : NaN;
+  if (raw == null) return NaN;
+  const s = String(raw).trim().replace(/\s/g, "");
+  if (!s) return NaN;
+  // European: 1.234,56 → 1234.56; plain 12,50 → 12.50
+  if (/^-?\d{1,3}(\.\d{3})*,\d+$/.test(s) || /^-?\d+,\d+$/.test(s)) {
+    return Number(s.replace(/\./g, "").replace(",", "."));
+  }
+  return Number(s);
+}
+
+function isBookedStatus(status: string | null | undefined): boolean {
+  if (!status) return true;
+  const s = status.toUpperCase();
+  // Enable Banking uses BOOK; some ASPSP payloads use BOOKED.
+  return s === "BOOK" || s === "BOOKED";
+}
+
 function mapTx(tx: EbTransaction): ProviderTransaction {
-  const rawAmount = Number(tx.transaction_amount?.amount ?? 0);
+  const rawAmount = parseEbAmount(tx.transaction_amount?.amount ?? 0);
   const indicator = tx.credit_debit_indicator;
   // Prefer signed amount: CRDT positive, DBIT negative when amount is absolute.
   let amount = rawAmount;
@@ -562,8 +582,8 @@ export class EnableBankingProvider implements OpenBankingProvider {
         }
         throw err;
       }
-      const booked = (data.transactions ?? []).filter(
-        (t: EbTransaction) => !t.status || t.status.toUpperCase() === "BOOK"
+      const booked = (data.transactions ?? []).filter((t: EbTransaction) =>
+        isBookedStatus(t.status)
       );
       all.push(...booked.map(mapTx));
       continuation = data.continuation_key ?? null;
