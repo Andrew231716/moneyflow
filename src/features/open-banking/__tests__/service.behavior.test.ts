@@ -26,6 +26,7 @@ import {
   handleConnectionCallback,
   syncConnection,
   resolveSyncDateFrom,
+  pickPreferredBalance,
 } from "../service";
 
 type Row = Record<string, unknown>;
@@ -636,6 +637,88 @@ describe("syncConnection", () => {
     expect(result.imported).toBe(1);
     expect(result.errors[0]).toMatch(/paginazione incompleta/);
   });
+
+  it("refreshes Conti from interimAvailable on re-sync (not stuck on first-connect)", async () => {
+    const active = baseConnection({
+      status: "active",
+      last_synced_at: "2026-09-20T12:00:00.000Z",
+    });
+    const state = {
+      connections: [active],
+      bankAccounts: [
+        {
+          id: "ba-1",
+          connection_id: active.id,
+          user_id: "user-a",
+          provider_account_id: "pa-1",
+          account_id: "acc-1",
+          currency: "EUR",
+          balance: 1000,
+        },
+      ],
+      accounts: [{ id: "acc-1", user_id: "user-a", balance: 1000 }],
+      transactions: [],
+    };
+    const supabase = createSupabaseMock(state);
+    vi.mocked(mockProvider.getBalances).mockResolvedValue([
+      { amount: 980.5, currency: "EUR", type: "closingBooked" },
+      { amount: 950.25, currency: "EUR", type: "interimAvailable" },
+    ]);
+    vi.mocked(mockProvider.getTransactions).mockResolvedValue([]);
+
+    await syncConnection({
+      supabase,
+      userId: "user-a",
+      connectionId: active.id,
+    });
+
+    expect(mockProvider.getBalances).toHaveBeenCalled();
+    expect(state.accounts[0].balance).toBe(950.25);
+    expect(state.bankAccounts[0].balance).toBe(950.25);
+  });
+
+  it("continues importing txs when balance refresh hits ASPSP rate limit", async () => {
+    const { OpenBankingProviderError } = await import("../errors");
+    const active = baseConnection({ status: "active" });
+    const state = {
+      connections: [active],
+      bankAccounts: [
+        {
+          id: "ba-1",
+          connection_id: active.id,
+          user_id: "user-a",
+          provider_account_id: "pa-1",
+          account_id: "acc-1",
+          currency: "EUR",
+        },
+      ],
+      accounts: [{ id: "acc-1", user_id: "user-a", balance: 0 }],
+      transactions: [],
+    };
+    const supabase = createSupabaseMock(state);
+    vi.mocked(mockProvider.getBalances).mockRejectedValue(
+      new OpenBankingProviderError("ASPSP_RATE_LIMIT_EXCEEDED", 429, "ASPSP_RATE_LIMIT_EXCEEDED")
+    );
+    vi.mocked(mockProvider.getTransactions).mockResolvedValue([
+      {
+        id: "tx-1",
+        bookingDate: "2026-09-21",
+        amount: -4,
+        currency: "EUR",
+        description: "Coffee",
+      },
+    ]);
+
+    const result = await syncConnection({
+      supabase,
+      userId: "user-a",
+      connectionId: active.id,
+    });
+
+    expect(result.imported).toBe(1);
+    expect(result.rateLimited).toBe(false);
+    expect(result.errors.some((e) => /saldo/i.test(e))).toBe(true);
+  });
 });
 
 describe("handleConnectionCallback dedup", () => {
@@ -750,6 +833,44 @@ describe("disconnectConnection", () => {
         connectionId: other.id,
       })
     ).rejects.toThrow(/non trovata|non autorizzata/i);
+  });
+});
+
+describe("pickPreferredBalance", () => {
+  it("prefers interimAvailable over closingBooked (matches Intesa app)", () => {
+    const pick = pickPreferredBalance([
+      { amount: 1000, currency: "EUR", type: "closingBooked" },
+      { amount: 942.1, currency: "EUR", type: "interimAvailable" },
+      { amount: 950, currency: "EUR", type: "expected" },
+    ]);
+    expect(pick?.amount).toBe(942.1);
+    expect(pick?.type).toBe("interimAvailable");
+  });
+
+  it("falls back through expected → interimBooked → closingBooked", () => {
+    expect(
+      pickPreferredBalance([
+        { amount: 1, currency: "EUR", type: "closingBooked" },
+        { amount: 2, currency: "EUR", type: "expected" },
+      ])?.amount
+    ).toBe(2);
+    expect(
+      pickPreferredBalance([
+        { amount: 1, currency: "EUR", type: "closingBooked" },
+        { amount: 3, currency: "EUR", type: "interimBooked" },
+      ])?.amount
+    ).toBe(3);
+    expect(
+      pickPreferredBalance([{ amount: 8, currency: "EUR", type: "closingBooked" }])
+        ?.amount
+    ).toBe(8);
+  });
+
+  it("returns null when no finite amounts", () => {
+    expect(pickPreferredBalance([])).toBeNull();
+    expect(
+      pickPreferredBalance([{ amount: Number.NaN, currency: "EUR", type: "interimAvailable" }])
+    ).toBeNull();
   });
 });
 

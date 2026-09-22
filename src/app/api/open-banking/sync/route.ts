@@ -35,7 +35,9 @@ export async function POST(request: NextRequest) {
       userId: user.id,
       connectionId: body.connection_id,
       fullSync: Boolean(body.full_sync),
-      skipBalances: true,
+      // Manual sync must refresh AIS balances — Conti otherwise stays stuck on
+      // the first-connect amount while Intesa shows interim/pending.
+      skipBalances: false,
     });
 
     const softOnly =
