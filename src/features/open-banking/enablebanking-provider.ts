@@ -536,12 +536,17 @@ export class EnableBankingProvider implements OpenBankingProvider {
     const data = await ebFetch<{ balances?: EbBalance[] }>(
       `/accounts/${encodeURIComponent(accountId)}/balances`
     );
-    return (data.balances ?? []).map((b) => ({
-      amount: Number(b.balance_amount?.amount ?? 0),
-      currency: b.balance_amount?.currency ?? "EUR",
-      type: b.balance_type ?? b.name ?? null,
-      referenceDate: b.reference_date ?? b.date ?? null,
-    }));
+    return (data.balances ?? [])
+      .map((b) => {
+        const amount = parseEbAmount(b.balance_amount?.amount);
+        return {
+          amount,
+          currency: b.balance_amount?.currency ?? "EUR",
+          type: b.balance_type ?? b.name ?? null,
+          referenceDate: b.reference_date ?? b.date ?? null,
+        };
+      })
+      .filter((b) => Number.isFinite(b.amount));
   }
 
   async getTransactions(
@@ -617,15 +622,19 @@ export class EnableBankingProvider implements OpenBankingProvider {
 
     // Intesa / several ASPSPs omit PDNG from the default stream. One dedicated
     // single-page call (no continuation) is safe with transaction_status=PDNG.
+    // Omit date_from/date_to: pending card holds often lack booking_date and
+    // Intesa drops them when the booked date window is applied.
     try {
       await sleep(TX_PAGE_DELAY_MS);
-      const pendingQuery = new URLSearchParams(q);
+      const pendingQuery = new URLSearchParams();
       pendingQuery.set("transaction_status", "PDNG");
       const pendingPath = `${basePath}?${pendingQuery.toString()}`;
       const pendingData = await ebFetch<{
         transactions?: EbTransaction[];
       }>(pendingPath, {}, { timeoutMs: 20_000, maxRetries: 1 });
       for (const t of pendingData.transactions ?? []) {
+        const status = (t.status ?? "").toUpperCase();
+        if (status === "INFO") continue;
         // Endpoint already filters PDNG; force pending even if status is blank.
         pushTx(mapTx(t, true));
       }

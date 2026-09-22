@@ -10,6 +10,7 @@ import type {
   Institution,
   InternalTransferSuggestion,
   OpenBankingProviderId,
+  ProviderBalance,
   SyncResult,
 } from "./types";
 import { prioritizeInstitutions } from "./institutions";
@@ -78,6 +79,40 @@ function isProviderRateLimit(err: unknown): boolean {
     );
   }
   return err instanceof Error && looksLikeRateLimitMessage(err.message);
+}
+
+/**
+ * Prefer the balance Intesa (and most ASPSPs) show in the banking app:
+ * interimAvailable / expected include pending card holds; closingBooked does not.
+ */
+const BALANCE_TYPE_PRIORITY = [
+  "interimavailable",
+  "expected",
+  "interimbooked",
+  "closingbooked",
+  "openingbooked",
+] as const;
+
+export function pickPreferredBalance(
+  balances: ProviderBalance[]
+): ProviderBalance | null {
+  const usable = balances.filter(
+    (b) => typeof b.amount === "number" && Number.isFinite(b.amount)
+  );
+  if (!usable.length) return null;
+
+  const norm = (t: string | null | undefined) =>
+    (t ?? "").toLowerCase().replace(/[\s_-]+/g, "");
+
+  for (const preferred of BALANCE_TYPE_PRIORITY) {
+    const hit = usable.find((b) => norm(b.type) === preferred);
+    if (hit) return hit;
+  }
+
+  const fuzzy =
+    usable.find((b) => /interim|available|expected/i.test(b.type ?? "")) ??
+    usable.find((b) => /closing|booked/i.test(b.type ?? ""));
+  return fuzzy ?? usable[0];
 }
 
 function redirectUrl(): string {
@@ -611,12 +646,13 @@ export async function syncConnection(options: {
   const allSuggestions: InternalTransferSuggestion[] = [];
   const accounts = bankAccounts as BankAccountRow[];
   const isFirstSync = !conn.last_synced_at;
+  // Cron/catch-up skips balances to save Intesa daily quota. Manual sync always
+  // refreshes balances so Conti matches the bank (interimAvailable includes pending).
+  // Soft-skip only when the connection already shows a sticky rate-limit message.
   const skipBalances =
     Boolean(options.skipBalances) ||
     Boolean(options.catchUp) ||
-    looksLikeRateLimitMessage(conn.error_message) ||
-    // Re-sync after a prior run: skip balances to protect Intesa daily multiplicity.
-    (!options.fullSync && !isFirstSync);
+    looksLikeRateLimitMessage(conn.error_message);
 
   const txMaxPages = options.fullSync || isFirstSync
     ? FULL_SYNC_TX_MAX_PAGES
@@ -640,9 +676,7 @@ export async function syncConnection(options: {
       if (!skipBalances) {
         try {
           const balances = await provider.getBalances(ba.provider_account_id);
-          const preferred =
-            balances.find((b) => /interim|expected|closing/i.test(b.type ?? "")) ??
-            balances[0];
+          const preferred = pickPreferredBalance(balances);
           if (preferred && ba.account_id) {
             const { error: balanceError } = await supabase
               .from("accounts")
@@ -666,15 +700,19 @@ export async function syncConnection(options: {
           }
         } catch (err) {
           if (isProviderRateLimit(err)) {
-            result.rateLimited = true;
+            // Soft: keep importing txs even if balance refresh hits quota.
             result.errors.push(
               isDailyRateLimitMessage((err as Error).message)
                 ? RATE_LIMIT_DAILY_MESSAGE
-                : RATE_LIMIT_PARTIAL_MESSAGE
+                : "Saldo non aggiornato (limite banca). I movimenti verranno comunque scaricati."
             );
-            break;
+          } else {
+            result.errors.push(
+              err instanceof Error
+                ? `Saldo non aggiornato: ${err.message}`
+                : "Saldo non aggiornato."
+            );
           }
-          throw err;
         }
         await sleep(BALANCE_TO_TX_PAUSE_MS);
       }

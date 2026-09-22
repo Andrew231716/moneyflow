@@ -185,6 +185,52 @@ describe("Enable Banking booked + pending transactions", () => {
     expect(fetchMock.mock.calls.some((c) => String(c[0]).includes("transaction_status=PDNG"))).toBe(
       true
     );
+    const pdngUrl = String(
+      fetchMock.mock.calls.find((c) => String(c[0]).includes("transaction_status=PDNG"))?.[0]
+    );
+    expect(pdngUrl).not.toContain("date_from=");
+    expect(pdngUrl).not.toContain("date_to=");
+  });
+
+  it("parses European balance amounts via getBalances", async () => {
+    process.env.ENABLEBANKING_APPLICATION_ID = "app-test-id";
+    process.env.ENABLEBANKING_PRIVATE_KEY = TEST_PRIVATE_KEY;
+
+    const fetchMock = vi.fn(async () => {
+      return new Response(
+        JSON.stringify({
+          balances: [
+            {
+              balance_type: "closingBooked",
+              balance_amount: { amount: "1.234,56", currency: "EUR" },
+            },
+            {
+              balance_type: "interimAvailable",
+              balance_amount: { amount: "1.200,00", currency: "EUR" },
+            },
+          ],
+        }),
+        { status: 200 }
+      );
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const provider = new EnableBankingProvider();
+    const balances = await provider.getBalances("acc-1");
+    expect(balances).toEqual([
+      {
+        amount: 1234.56,
+        currency: "EUR",
+        type: "closingBooked",
+        referenceDate: null,
+      },
+      {
+        amount: 1200,
+        currency: "EUR",
+        type: "interimAvailable",
+        referenceDate: null,
+      },
+    ]);
   });
 
   it("keeps first page when continuation page returns 422", async () => {
