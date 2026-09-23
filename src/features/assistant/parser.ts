@@ -19,6 +19,7 @@ import {
   formatCutPotentialAssistantText,
   rankCutPotential,
 } from "@/lib/finance/cut-potential";
+import { parseItalianDeadline } from "@/lib/finance/goal-what-if";
 import type { RecurringTransaction } from "@/types/database";
 import { formatCurrency } from "@/lib/utils";
 
@@ -42,6 +43,7 @@ export type AssistantIntent =
   | { type: "bulk_categorize"; payload: BulkCategorizePayload }
   | { type: "bulk_rename"; payload: BulkRenamePayload }
   | { type: "financial_projection"; payload: Record<string, never> }
+  | { type: "goal_what_if"; payload: GoalWhatIfPayload }
   | { type: "help"; payload: Record<string, never> }
   | { type: "unknown"; payload: { message: string } };
 
@@ -114,6 +116,17 @@ export interface QueryPayload {
   type?: "income" | "expense";
 }
 
+/** Hypothetical goal plan: contribute today and/or set a deadline. */
+export interface GoalWhatIfPayload {
+  goalHint: string;
+  /** Fixed euro amount to contribute today, if stated. */
+  contributeAmount?: number;
+  /** Use the full Salvadanaio balance as contribution. */
+  useSavingsBalance?: boolean;
+  /** ISO deadline override if the user named one. */
+  deadline?: string | null;
+}
+
 const AMOUNT_RE = /(\d+(?:[.,]\d{1,2})?)\s*(?:€|euro)?/i;
 
 function parseAmountIT(raw: string): number {
@@ -150,7 +163,112 @@ function stripDateWords(text: string): string {
     .trim();
 }
 
-const HELP_MESSAGE = `Sono il Gestore finanziario locale (senza AI cloud). Comandi utili:
+/**
+ * Detect natural-language what-if questions about goals / monthly savings.
+ * Examples:
+ * - Se inserisco oggi nell'obiettivo Vacanza Islanda i 300 euro del Salvadanaio…
+ * - Quanto al mese per Islanda entro il 15 febbraio?
+ * - Se uso tutto il salvadanaio su Vacanza, quanto manca al mese?
+ */
+export function tryParseGoalWhatIf(input: string): AssistantIntent | null {
+  const text = input.trim();
+  const lower = text.toLowerCase();
+
+  const asksCalc =
+    /quanto\s+(dovrei\s+)?(mettere|mettere\s+da\s+parte|versare|risparmiare)|quanto\s+al\s+mese|mettere\s+da\s+parte|da\s+parte\s+nei\s+prossimi|calcola|simul|se\s+(inserisco|metto|verso|sposto|trasferisco|uso|impiego)/i.test(
+      lower
+    );
+  const mentionsGoal =
+    /obiettiv|vacanz|island|matrimon|viaggio|target|scadenz/.test(lower) ||
+    /entro\s+(il\s+)?\d/.test(lower) ||
+    /entro\s+(il\s+)?\d{1,2}\s+(gennaio|febbraio|marzo|aprile|maggio|giugno|luglio|agosto|settembre|ottobre|novembre|dicembre)/.test(
+      lower
+    );
+
+  if (!asksCalc || !mentionsGoal) return null;
+
+  // Avoid stealing plain "metti 300 nel salvadanaio" (no goal / no calc ask beyond deposit).
+  if (
+    /(?:metti|versa|deposita)\s+\d/.test(lower) &&
+    /salvadan/.test(lower) &&
+    !/obiettiv|entro|quanto|da\s+parte|vacanz|island/.test(lower)
+  ) {
+    return null;
+  }
+
+  const deadline = parseItalianDeadline(text);
+
+  let contributeAmount: number | undefined;
+  let useSavingsBalance = false;
+
+  const amountFromSavings = lower.match(
+    /(\d+(?:[.,]\d{1,2})?)\s*(?:€|euro)?\s*(?:del|dal|di|dal\s+mio|del\s+mio)?\s*(?:il\s+)?salvadan/
+  );
+  if (amountFromSavings) {
+    contributeAmount = parseAmountIT(amountFromSavings[1]);
+    useSavingsBalance = false;
+  } else if (
+    /tutto\s+(il\s+)?salvadan|i\s+soldi\s+del\s+salvadan|il\s+salvadan(?:aio)?\s+(sull|nell|per|verso|su)/.test(
+      lower
+    ) ||
+    (/salvadan/.test(lower) &&
+      /(?:inserisco|metto|verso|sposto|uso|impiego)/.test(lower))
+  ) {
+    useSavingsBalance = true;
+  } else {
+    // "se metto 300 sull'obiettivo Islanda" without naming salvadanaio
+    const contrib = lower.match(
+      /(?:inserisco|metto|verso|sposto|trasferisco|aggiungo)\s+(?:oggi\s+)?(?:nell['']?obiettivo\s+.+?\s+)?(?:i\s+|gli\s+)?(\d+(?:[.,]\d{1,2})?)\s*(?:€|euro)?/
+    );
+    if (contrib) contributeAmount = parseAmountIT(contrib[1]);
+  }
+
+  let goalHint = "";
+  const goalNamed = text.match(
+    /obiettiv(?:o|i)\s+([A-Za-zÀ-ÿ0-9][A-Za-zÀ-ÿ0-9\s''-]{1,60}?)(?=\s+(?:i\s+\d|gli\s+\d|\d|del\s+salvadan|dal\s+salvadan|quanto|entro|,|\?|$))/i
+  );
+  if (goalNamed) {
+    goalHint = goalNamed[1]
+      .replace(/\b(oggi|i|gli|del|dal|il|la|lo|i|gli)\b/gi, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+  }
+  if (!goalHint) {
+    const suGoal = text.match(
+      /(?:su|per|verso|nell['']?|sull['']?)\s+(?:l['']?)?(?:obiettivo\s+)?([A-Za-zÀ-ÿ][A-Za-zÀ-ÿ0-9\s''-]{1,40}?)(?=\s+(?:i\s+\d|\d|entro|quanto|,|\?|$)|$)/i
+    );
+    if (suGoal) {
+      goalHint = suGoal[1]
+        .replace(/\b(obiettiv(?:o|i)|salvadan(?:aio)?|euro|mesi|mese)\b/gi, " ")
+        .replace(/\s+/g, " ")
+        .trim();
+    }
+  }
+  if (!goalHint) {
+    // Fallback: known trip keywords
+    const trip = lower.match(
+      /\b(vacanza\s+islanda|islanda|matrimonio|viaggio(?:\s+[a-zà-ÿ]+){0,3})\b/i
+    );
+    if (trip) goalHint = trip[1];
+  }
+  if (!goalHint) goalHint = "obiettivo";
+
+  return {
+    type: "goal_what_if",
+    payload: {
+      goalHint,
+      contributeAmount:
+        contributeAmount != null && Number.isFinite(contributeAmount)
+          ? contributeAmount
+          : undefined,
+      useSavingsBalance,
+      deadline,
+    },
+  };
+}
+
+const HELP_MESSAGE = `Sono il Gestore finanziario locale (calcoli gratis, senza API a pagamento). Comandi utili:
+• Calcoli obiettivo: "Se metto i 300 del salvadanaio su Vacanza Islanda, quanto al mese entro il 15 febbraio?"
 • Salvadanaio: "Metti 300 euro nel salvadanaio", "Preleva 50 dal salvadanaio"
 • Obiettivi: "Crea obiettivo Matrimonio a 200 euro già raggiunto", "Aggiungi 20 all'obiettivo Matrimonio"
 • Risparmio: "Dove posso risparmiare?"
@@ -168,6 +286,11 @@ export function parseAssistantCommand(input: string): AssistantIntent {
   if (/^(aiuto|help|comandi|\?)$/i.test(lower) || /cosa puoi fare|che comandi/.test(lower)) {
     return { type: "help", payload: {} };
   }
+
+  // What-if goal calc BEFORE savings deposit — "metto 300 del salvadanaio sull'obiettivo"
+  // must not become a plain deposit.
+  const whatIf = tryParseGoalWhatIf(text);
+  if (whatIf) return whatIf;
 
   // Savings deposit: "metti 300 euro nel salvadanaio" / "versa 50 sul salvadanaio"
   const savingsIn = lower.match(
@@ -657,6 +780,7 @@ export function findGoal(goals: Goal[], hint: string): Goal | undefined {
 }
 
 export const ASSISTANT_EXAMPLES = [
+  "Se metto i 300 del salvadanaio su Vacanza Islanda, quanto al mese entro il 15 febbraio?",
   "Metti 300 euro nel salvadanaio",
   "Crea obiettivo Matrimonio Giulia e Ruben a 200 euro già raggiunto",
   "Dove posso risparmiare?",

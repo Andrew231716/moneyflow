@@ -32,6 +32,7 @@ import {
   calcMonthSummary,
   forecastMonthEnd,
 } from "@/lib/finance/engine";
+import { computeGoalWhatIf } from "@/lib/finance/goal-what-if";
 import { createClient } from "@/lib/supabase/client";
 import {
   adjustAccountBalance,
@@ -95,7 +96,7 @@ export function AssistantPanel({
     {
       id: nid(),
       role: "assistant",
-      text: "Ciao — sono il Gestore finanziario locale di MoneyFlow. Scrivi in italiano: creo movimenti, gestisco salvadanaio e obiettivi, sincronizzo banche e rispondo su saldi/budget. Nessuna API a pagamento.",
+      text: "Ciao — sono il Gestore finanziario di MoneyFlow. Calcoli e simulazioni gratis (niente API a pagamento): prova «Se metto i 300 del salvadanaio su Vacanza Islanda, quanto al mese entro il 15 febbraio?»",
     },
   ]);
   const [pending, setPending] = useState<PendingAction | null>(null);
@@ -187,6 +188,66 @@ export function AssistantPanel({
           { label: "Saldo previsto", amount: forecast.projectedSavings },
         ]
       );
+      return;
+    }
+
+    if (intent.type === "goal_what_if") {
+      const p = intent.payload;
+      const goal =
+        findGoal(goals, p.goalHint) ||
+        goals.find((g) => g.status === "active" && !g.settled) ||
+        goals[0];
+      if (!goal) {
+        pushAssistant(
+          "Non trovo obiettivi. Creane uno da Obiettivi (es. Vacanza Islanda) e riprova la domanda."
+        );
+        return;
+      }
+      if (
+        p.goalHint &&
+        p.goalHint !== "obiettivo" &&
+        !findGoal(goals, p.goalHint)
+      ) {
+        pushAssistant(
+          `Non trovo un obiettivo chiamato «${p.goalHint}». Obiettivi disponibili: ${
+            goals.map((g) => g.name).join(", ") || "nessuno"
+          }.`
+        );
+        return;
+      }
+
+      const savings = findSavingsAccount(accounts);
+      let contribute = p.contributeAmount ?? 0;
+      let savingsNote = "";
+      if (p.useSavingsBalance) {
+        contribute = Math.max(0, Number(savings?.balance ?? 0));
+        if (contribute <= 0) {
+          pushAssistant(
+            "Il Salvadanaio è a zero (o non esiste). Indica un importo, es. «se metto 300 su Islanda…»."
+          );
+          return;
+        }
+      } else if (
+        p.contributeAmount != null &&
+        savings &&
+        p.contributeAmount > Number(savings.balance) + 0.009
+      ) {
+        savingsNote = `Nel Salvadanaio ci sono ${formatCurrency(Number(savings.balance))}, meno dei ${formatCurrency(p.contributeAmount)} chiesti: simulo con il saldo disponibile. `;
+        contribute = Math.max(0, Number(savings.balance));
+      }
+
+      const result = computeGoalWhatIf({
+        goal,
+        contributeAmount: contribute,
+        deadline: p.deadline ?? goal.deadline,
+      });
+
+      const hint =
+        contribute > 0 && savings
+          ? `\n\nVuoi davvero spostare ${formatCurrency(contribute)} dal Salvadanaio all'obiettivo? Dimmi ad esempio: «Aggiungi ${Math.round(contribute)} all'obiettivo ${goal.name}».`
+          : "";
+
+      pushAssistant(savingsNote + result.summaryText + hint, result.moneyLines);
       return;
     }
 
