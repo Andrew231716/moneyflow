@@ -97,6 +97,24 @@ describe("assistant parser", () => {
     );
   });
 
+  it("parses goal what-if with salvadanaio contribution and February deadline", () => {
+    const intent = parseAssistantCommand(
+      "Se inserisco oggi nell'obiettivo Vacanza Islanda i 300 euro del Salvadanaio, quanto dovrei mettere da parte nei prossimi mesi per arrivare a raggiungere l'obiettivo entro il 15 febbraio?"
+    );
+    expect(intent.type).toBe("goal_what_if");
+    if (intent.type === "goal_what_if") {
+      expect(intent.payload.goalHint.toLowerCase()).toMatch(/islanda|vacanza/);
+      expect(intent.payload.contributeAmount).toBe(300);
+      expect(intent.payload.deadline).toMatch(/^\d{4}-02-15$/);
+    }
+  });
+
+  it("still parses plain salvadanaio deposit", () => {
+    expect(parseAssistantCommand("Metti 300 euro nel salvadanaio").type).toBe(
+      "deposit_savings"
+    );
+  });
+
   it("returns unknown for gibberish", () => {
     expect(parseAssistantCommand("bla bla xyz").type).toBe("unknown");
   });
