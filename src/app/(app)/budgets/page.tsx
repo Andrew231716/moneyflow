@@ -11,11 +11,11 @@ import { toMonthStart } from "@/lib/utils";
 export default async function BudgetsPage({
   searchParams,
 }: {
-  searchParams?: Promise<{ month?: string }> | { month?: string };
+  searchParams?: Promise<{ month?: string }>;
 }) {
   if (!hasSupabaseEnv()) return null;
 
-  const sp = (await Promise.resolve(searchParams ?? {})) as { month?: string };
+  const sp = (await searchParams) ?? {};
   const month = resolveBudgetMonth(sp.month);
   const monthKey = format(month, "yyyy-MM");
   const now = new Date();
