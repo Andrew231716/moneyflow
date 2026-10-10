@@ -57,7 +57,7 @@ export default async function DashboardPage() {
     previousSummary,
   });
   const reservedGoalsTotal = calcReservedGoalsTotal(goals);
-  const availability = calcDisponibilitaTotale(accounts, goals);
+  const availability = calcDisponibilitaTotale(accounts);
   const openDebtsTotal = calcOpenDebtsTotal(debts);
   const netWorth = calcNetWorth(availability, debts);
   const recent = transactions.filter((t) => t.type !== "transfer").slice(0, 8);

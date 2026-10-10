@@ -71,7 +71,7 @@ export function AccountsManager({
 
   const accountsTotal = calcTotalAvailability(accounts);
   const reservedGoalsTotal = calcReservedGoalsTotal(goals);
-  const total = calcDisponibilitaTotale(accounts, goals);
+  const total = calcDisponibilitaTotale(accounts);
   const savingsAccounts = accounts.filter((a) => a.type === "savings");
   const otherAccounts = accounts.filter((a) => a.type !== "savings");
   const savingsTotal = savingsAccounts.reduce((s, a) => s + Number(a.balance), 0);
@@ -201,7 +201,7 @@ export function AccountsManager({
                 ? `Salvadanaio ${formatCurrency(savingsTotal)}`
                 : null,
               reservedGoalsTotal > 0
-                ? `Obiettivi ${formatCurrency(reservedGoalsTotal)}`
+                ? `Obiettivi esclusi ${formatCurrency(reservedGoalsTotal)}`
                 : null,
             ]
               .filter(Boolean)

@@ -171,28 +171,34 @@ describe("financial engine", () => {
     expect(isGoalSettled(goals[2])).toBe(true);
   });
 
-  it("adds unsettled goals to headline disponibilità", () => {
+  it("keeps goal savings outside availability and net worth", () => {
     const accounts = [
-      { balance: 285, is_archived: false },
-      { balance: 300, is_archived: false },
+      { balance: 2000, is_archived: false },
+      { balance: 200, is_archived: false },
+      { balance: 1000, is_archived: false },
       { balance: 50, is_archived: true },
     ] as Account[];
     const goals = [
       {
-        name: "Matrimonio",
-        current_amount: 200,
-        status: "completed",
+        name: "Vacanza",
+        current_amount: 500,
+        target_amount: 2000,
+        status: "active",
         settled: false,
       },
       {
-        name: "Vecchio",
-        current_amount: 100,
-        status: "completed",
-        settled: true,
+        name: "Auto",
+        current_amount: 1500,
+        target_amount: 10000,
+        status: "active",
+        settled: false,
       },
     ] as Goal[];
-    expect(calcTotalAvailability(accounts)).toBe(585);
-    expect(calcDisponibilitaTotale(accounts, goals)).toBe(785);
+
+    expect(calcReservedGoalsTotal(goals)).toBe(2000);
+    expect(calcTotalAvailability(accounts)).toBe(3200);
+    expect(calcDisponibilitaTotale(accounts)).toBe(3200);
+    expect(calcNetWorth(calcDisponibilitaTotale(accounts), [])).toBe(3200);
   });
 
   it("sums open debts and net worth separately from disponibilità", () => {

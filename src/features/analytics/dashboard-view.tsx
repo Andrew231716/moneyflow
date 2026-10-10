@@ -100,7 +100,7 @@ export function DashboardView(props: {
     isEmpty,
   } = props;
   const savingsBalance = savingsAccounts.reduce((s, a) => s + Number(a.balance), 0);
-  const liquidBalance = availability - savingsBalance - reservedGoalsTotal;
+  const liquidBalance = availability - savingsBalance;
   const reservedGoals = goals.filter(
     (g) => g.status !== "cancelled" && !g.settled
   );
@@ -152,7 +152,7 @@ export function DashboardView(props: {
                   ? `Salvadanaio ${formatCurrency(savingsBalance)}`
                   : null,
                 reservedGoalsTotal > 0
-                  ? `Obiettivi ${formatCurrency(reservedGoalsTotal)}`
+                  ? `Obiettivi esclusi ${formatCurrency(reservedGoalsTotal)}`
                   : null,
               ]
                 .filter(Boolean)
@@ -287,8 +287,8 @@ export function DashboardView(props: {
                   ))}
                 </div>
                 <p className="text-[11px] text-muted-foreground leading-relaxed">
-                  Conti risparmio separati dagli obiettivi. Il totale in alto =
-                  Conti + Salvadanaio + Obiettivi non saldati.
+                  Il totale in alto include solo Conti + Salvadanaio. Gli Obiettivi
+                  restano separati e non entrano nella disponibilità o nel patrimonio.
                 </p>
               </div>
             ) : (
@@ -301,14 +301,15 @@ export function DashboardView(props: {
           <section className="mf-surface p-5 space-y-4">
             <SectionHeader
               title="Obiettivi"
-              description="Somma non saldata (ancora disponibile)"
+              description="Somma accantonata fuori dalla disponibilità"
               href="/goals"
             />
             <MoneyValue amount={reservedGoalsTotal} size="lg" tone="success" />
             <p className="text-xs text-muted-foreground leading-relaxed">
-              Include obiettivi raggiunti ma non ancora saldati. Dopo{" "}
+              Gli importi degli obiettivi restano fuori dalla Disponibilità e dal
+              patrimonio. Dopo{" "}
               <span className="font-medium text-foreground">Saldato</span> escono
-              da questo totale (e, se confermi, dal Salvadanaio).
+              anche dal totale Obiettivi.
             </p>
             {highlightGoals.length > 0 ? (
               <div className="space-y-3">

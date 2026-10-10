@@ -656,10 +656,13 @@ export function runQueryBalance(
   const total = list.reduce((s, a) => s + Number(a.balance), 0);
   const accountsTotal = calcTotalAvailability(active);
   const reserved = calcReservedGoalsTotal(goals);
-  const allTotal = calcDisponibilitaTotale(active, goals);
+  const allTotal = calcDisponibilitaTotale(active);
   const lines = list.map((a) => ({ name: a.name, amount: Number(a.balance) }));
   if (list.length === active.length && reserved > 0) {
-    lines.push({ name: "Obiettivi (non saldati)", amount: reserved });
+    lines.push({
+      name: "Obiettivi accantonati (esclusi dal totale)",
+      amount: reserved,
+    });
   }
   const detail = lines
     .map((l) => `• ${l.name}: ${formatCurrency(l.amount)}`)
@@ -670,7 +673,7 @@ export function runQueryBalance(
     summaryText:
       list.length === active.length
         ? `Disponibilità totale: ${formatCurrency(allTotal)}\n${detail}`
-        : `Saldo selezionato: ${formatCurrency(total)}\n${detail}\n(Totale conti: ${formatCurrency(accountsTotal)}${reserved > 0 ? ` · Obiettivi: ${formatCurrency(reserved)}` : ""})`,
+        : `Saldo selezionato: ${formatCurrency(total)}\n${detail}\n(Totale conti: ${formatCurrency(accountsTotal)}${reserved > 0 ? ` · Obiettivi esclusi: ${formatCurrency(reserved)}` : ""})`,
   };
 }
 

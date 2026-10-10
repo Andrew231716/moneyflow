@@ -163,7 +163,7 @@ export function calcGoalProgress(goal: Goal): {
   };
 }
 
-/** Target met (raggiunto) — funds may still be earmarked and available. */
+/** Target met (raggiunto) — funds stay tracked only inside the goal. */
 export function isGoalReached(goal: Goal): boolean {
   return (
     goal.status === "completed" ||
@@ -178,7 +178,8 @@ export function isGoalSettled(goal: Goal): boolean {
 
 /**
  * Sum of current_amount for goals that are not settled.
- * Earmarked funds still count in Totale disponibilità until marked Saldato.
+ * This is a goal-only figure: earmarked funds never contribute to account
+ * availability or net worth.
  */
 export function calcReservedGoalsTotal(goals: Goal[]): number {
   return goals
@@ -187,15 +188,12 @@ export function calcReservedGoalsTotal(goals: Goal[]): number {
 }
 
 /**
- * Headline Totale disponibilità: conti (incl. Salvadanaio) + obiettivi non saldati.
- * Goal current_amount is tracked separately from account balances in MoneyFlow
- * (e.g. Salvadanaio 300 + Matrimonio 200), so both are additive until Saldato.
+ * Headline Totale disponibilità: active account balances only.
+ * Goal current_amount represents money physically set aside in a separate pot,
+ * so it must never increase availability or net worth.
  */
-export function calcDisponibilitaTotale(
-  accounts: Account[],
-  goals: Goal[] = []
-): number {
-  return calcTotalAvailability(accounts) + calcReservedGoalsTotal(goals);
+export function calcDisponibilitaTotale(accounts: Account[]): number {
+  return calcTotalAvailability(accounts);
 }
 
 /** Open debts (paid_at is null) — liabilities, not subtracted from disponibilità. */
@@ -209,7 +207,7 @@ export function calcOpenDebtsTotal(debts: Debt[]): number {
     .reduce((sum, d) => sum + Number(d.amount), 0);
 }
 
-/** Netto patrimoniale semplice: disponibilità − debiti aperti. */
+/** Netto patrimoniale semplice: disponibilità dei conti − debiti aperti; obiettivi esclusi. */
 export function calcNetWorth(disponibilita: number, debts: Debt[]): number {
   return disponibilita - calcOpenDebtsTotal(debts);
 }
