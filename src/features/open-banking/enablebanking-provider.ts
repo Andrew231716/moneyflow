@@ -624,22 +624,25 @@ export class EnableBankingProvider implements OpenBankingProvider {
     // single-page call (no continuation) is safe with transaction_status=PDNG.
     // Omit date_from/date_to: pending card holds often lack booking_date and
     // Intesa drops them when the booked date window is applied.
-    try {
-      await sleep(TX_PAGE_DELAY_MS);
-      const pendingQuery = new URLSearchParams();
-      pendingQuery.set("transaction_status", "PDNG");
-      const pendingPath = `${basePath}?${pendingQuery.toString()}`;
-      const pendingData = await ebFetch<{
-        transactions?: EbTransaction[];
-      }>(pendingPath, {}, { timeoutMs: 20_000, maxRetries: 1 });
-      for (const t of pendingData.transactions ?? []) {
-        const status = (t.status ?? "").toUpperCase();
-        if (status === "INFO") continue;
-        // Endpoint already filters PDNG; force pending even if status is blank.
-        pushTx(mapTx(t, true));
+    // Revolut: skip — PDNG/status filters often 422/403 and waste the consent window.
+    if (params.includePending !== false) {
+      try {
+        await sleep(TX_PAGE_DELAY_MS);
+        const pendingQuery = new URLSearchParams();
+        pendingQuery.set("transaction_status", "PDNG");
+        const pendingPath = `${basePath}?${pendingQuery.toString()}`;
+        const pendingData = await ebFetch<{
+          transactions?: EbTransaction[];
+        }>(pendingPath, {}, { timeoutMs: 20_000, maxRetries: 1 });
+        for (const t of pendingData.transactions ?? []) {
+          const status = (t.status ?? "").toUpperCase();
+          if (status === "INFO") continue;
+          // Endpoint already filters PDNG; force pending even if status is blank.
+          pushTx(mapTx(t, true));
+        }
+      } catch {
+        // Pending is best-effort — never fail the whole sync if PDNG call errors.
       }
-    } catch {
-      // Pending is best-effort — never fail the whole sync if PDNG call errors.
     }
 
     return all;

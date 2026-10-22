@@ -291,6 +291,16 @@ export function BankConnectionsPanel() {
         </p>
       )}
 
+      {connections.some((c) => /revolut/i.test(c.institution_name)) && (
+        <p className="text-xs text-muted-foreground rounded-xl border border-border/70 bg-muted/40 px-3 py-2">
+          <strong className="font-medium text-foreground">Revolut:</strong> autorizza
+          dall&apos;app mobile e seleziona il conto <strong>EUR</strong>. Dopo il consenso
+          sincronizza subito (la cronologia completa è disponibile solo per pochi minuti;
+          poi Revolut espone circa 90 giorni). Le carte di credito compaiono solo se
+          le selezioni nel consenso in-app.
+        </p>
+      )}
+
       {loading ? (
         <div className="flex items-center gap-2 text-sm text-muted-foreground py-6 justify-center">
           <Loader2 className="size-4 animate-spin" />

@@ -192,6 +192,49 @@ describe("Enable Banking booked + pending transactions", () => {
     expect(pdngUrl).not.toContain("date_to=");
   });
 
+  it("skips dedicated PDNG call when includePending is false (Revolut)", async () => {
+    process.env.ENABLEBANKING_APPLICATION_ID = "app-test-id";
+    process.env.ENABLEBANKING_PRIVATE_KEY = TEST_PRIVATE_KEY;
+    vi.spyOn(globalThis, "setTimeout").mockImplementation(((
+      handler: TimerHandler,
+      _ms?: number,
+      ...args: unknown[]
+    ) => {
+      if (typeof handler === "function") handler(...(args as never[]));
+      return 0 as unknown as ReturnType<typeof setTimeout>;
+    }) as unknown as typeof setTimeout);
+
+    const fetchMock = vi.fn(async () => {
+      return new Response(
+        JSON.stringify({
+          transactions: [
+            {
+              entry_reference: "b1",
+              status: "BOOK",
+              booking_date: "2026-10-01",
+              credit_debit_indicator: "DBIT",
+              transaction_amount: { amount: "3.00", currency: "EUR" },
+              remittance_information: ["Revolut booked"],
+            },
+          ],
+        }),
+        { status: 200 }
+      );
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const provider = new EnableBankingProvider();
+    const txs = await provider.getTransactions({
+      accountId: "acc-1",
+      includePending: false,
+    });
+    expect(txs).toHaveLength(1);
+    const calledUrls = fetchMock.mock.calls.map((c) => String(c.at(0) ?? ""));
+    expect(calledUrls.some((u) => u.includes("transaction_status=PDNG"))).toBe(
+      false
+    );
+  });
+
   it("parses European balance amounts via getBalances", async () => {
     process.env.ENABLEBANKING_APPLICATION_ID = "app-test-id";
     process.env.ENABLEBANKING_PRIVATE_KEY = TEST_PRIVATE_KEY;

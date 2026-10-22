@@ -13,7 +13,7 @@ import type {
   ProviderBalance,
   SyncResult,
 } from "./types";
-import { prioritizeInstitutions } from "./institutions";
+import { isRevolut, prioritizeInstitutions } from "./institutions";
 import {
   IncompleteTransactionsError,
   OpenBankingConfigError,
@@ -30,10 +30,17 @@ const BALANCE_TO_TX_PAUSE_MS = 800;
 const INCREMENTAL_OVERLAP_DAYS = 2;
 /** Manual sync lookback — recent window only; cron catches up history. */
 const MANUAL_LOOKBACK_DAYS = 7;
+/**
+ * Revolut PSD2: after ~5 minutes from consent, history is capped to ~90 days.
+ * Always respect that floor so date_from does not 403/422 the whole sync.
+ */
+const REVOLUT_MAX_LOOKBACK_DAYS = 90;
 /** Manual / cron page budget per click or cron tick. */
 const MANUAL_TX_MAX_PAGES = 2;
 const CRON_TX_MAX_PAGES = 2;
 const FULL_SYNC_TX_MAX_PAGES = 5;
+/** First Revolut sync: burn the short full-history window with more pages. */
+const REVOLUT_FIRST_SYNC_TX_MAX_PAGES = 12;
 
 function sleep(ms: number): Promise<void> {
   if (process.env.VITEST === "true" || process.env.NODE_ENV === "test") {
@@ -654,11 +661,15 @@ export async function syncConnection(options: {
     Boolean(options.catchUp) ||
     looksLikeRateLimitMessage(conn.error_message);
 
-  const txMaxPages = options.fullSync || isFirstSync
-    ? FULL_SYNC_TX_MAX_PAGES
-    : options.catchUp
-      ? CRON_TX_MAX_PAGES
-      : MANUAL_TX_MAX_PAGES;
+  const revolut = isRevolut(conn.institution_name);
+  const txMaxPages =
+    revolut && (options.fullSync || isFirstSync)
+      ? REVOLUT_FIRST_SYNC_TX_MAX_PAGES
+      : options.fullSync || isFirstSync
+        ? FULL_SYNC_TX_MAX_PAGES
+        : options.catchUp
+          ? CRON_TX_MAX_PAGES
+          : MANUAL_TX_MAX_PAGES;
 
   for (let i = 0; i < accounts.length; i++) {
     const ba = accounts[i];
@@ -742,12 +753,13 @@ export async function syncConnection(options: {
         forceFullWindow: Boolean(options.fullSync) || isFirstSync,
         lastTransactionDate: watermarkDate,
         overlapDays: INCREMENTAL_OVERLAP_DAYS,
-        maxLookbackDays:
-          options.fullSync || options.catchUp || isFirstSync
+        maxLookbackDays: revolut
+          ? REVOLUT_MAX_LOOKBACK_DAYS
+          : options.fullSync || options.catchUp || isFirstSync
             ? undefined
             : MANUAL_LOOKBACK_DAYS,
       });
-      const dateFromIso = dateFrom.toISOString().slice(0, 10);
+      let dateFromIso = dateFrom.toISOString().slice(0, 10);
 
       // Seed catch-up when history is clearly behind (cron will drain it).
       if (
@@ -762,11 +774,39 @@ export async function syncConnection(options: {
       let txs;
       let incompleteFetch = false;
       try {
-        txs = await provider.getTransactions({
-          accountId: ba.provider_account_id,
-          dateFrom: dateFromIso,
-          maxPages: txMaxPages,
-        });
+        try {
+          txs = await provider.getTransactions({
+            accountId: ba.provider_account_id,
+            dateFrom: dateFromIso,
+            maxPages: txMaxPages,
+            // Revolut rejects / ignores dedicated PDNG filters; Intesa needs them.
+            includePending: !revolut,
+          });
+        } catch (firstErr) {
+          // Revolut: retry once with a strict 90-day window if the bank rejects the period.
+          if (
+            !revolut ||
+            !(firstErr instanceof OpenBankingProviderError) ||
+            !(
+              firstErr.status === 403 ||
+              firstErr.status === 422 ||
+              /period|date_from|date from|ACCESS_DENIED/i.test(
+                `${firstErr.providerCode ?? ""} ${firstErr.message}`
+              )
+            )
+          ) {
+            throw firstErr;
+          }
+          const floor = new Date();
+          floor.setDate(floor.getDate() - REVOLUT_MAX_LOOKBACK_DAYS);
+          dateFromIso = floor.toISOString().slice(0, 10);
+          txs = await provider.getTransactions({
+            accountId: ba.provider_account_id,
+            dateFrom: dateFromIso,
+            maxPages: txMaxPages,
+            includePending: false,
+          });
+        }
       } catch (err) {
         if (
           err &&
