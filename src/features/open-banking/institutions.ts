@@ -19,6 +19,11 @@ export function isIntesaSanpaolo(name: string): boolean {
   return n.includes("intesa") && n.includes("sanpaolo");
 }
 
+/** Revolut (Bank UAB / personal) — stricter AIS history window than IT banks. */
+export function isRevolut(name: string): boolean {
+  return normalizeInstitutionName(name).includes("revolut");
+}
+
 /**
  * Prioritize Intesa Sanpaolo at the top when present; otherwise return list as-is
  * (caller may still show full list when search yields no Intesa match).

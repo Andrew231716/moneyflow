@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   findIntesaSanpaolo,
   isIntesaSanpaolo,
+  isRevolut,
   normalizeInstitutionName,
   prioritizeInstitutions,
 } from "../institutions";
@@ -18,6 +19,12 @@ describe("Intesa discovery (no hardcoded institution_id)", () => {
     expect(isIntesaSanpaolo("Intesa Sanpaolo")).toBe(true);
     expect(isIntesaSanpaolo("Banca Intesa San Paolo")).toBe(true);
     expect(isIntesaSanpaolo("UniCredit")).toBe(false);
+  });
+
+  it("detects Revolut", () => {
+    expect(isRevolut("Revolut")).toBe(true);
+    expect(isRevolut("Revolut Bank UAB")).toBe(true);
+    expect(isRevolut("Intesa Sanpaolo")).toBe(false);
   });
 
   it("prioritizes Intesa dynamically from live-shaped list", () => {

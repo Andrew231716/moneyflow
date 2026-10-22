@@ -102,6 +102,13 @@ export default function ConnectBankClient() {
           della banca.
         </p>
         <p className="text-xs text-muted-foreground">Paese: Italia (IT)</p>
+        {/revolut/i.test(query) && (
+          <p className="text-xs text-muted-foreground rounded-xl border border-border/70 bg-muted/40 px-3 py-2">
+            Per Revolut: completa l&apos;autorizzazione nell&apos;app mobile, seleziona il
+            conto EUR, poi da Conti premi <strong>Sincronizza</strong> subito dopo il
+            ritorno in MoneyFlow.
+          </p>
+        )}
       </div>
 
       {statusMessage && (

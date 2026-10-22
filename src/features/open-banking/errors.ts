@@ -59,7 +59,18 @@ export function friendlyProviderStatusMessage(
     return "Parametri non validi per la banca. Riprova la sincronizzazione tra poco.";
   }
   if (status === 401 || status === 403 || code === "ACCESS_DENIED") {
-    return "Autenticazione Open Banking non valida. Controlla le credenziali del provider.";
+    if (/revolut|consent|authoris|authoriz|sca|period/i.test(providerMessage ?? "")) {
+      return "Revolut ha rifiutato la lettura. Ricollega il conto dall'app Revolut e seleziona il conto EUR, poi sincronizza subito.";
+    }
+    return "Accesso Open Banking negato. Ricollega la banca da Conti e riprova la sync.";
+  }
+  if (
+    code === "TRANSACTION_PERIOD" ||
+    /transaction.?period|date.?from|date_from|period/i.test(
+      `${code} ${providerMessage ?? ""}`
+    )
+  ) {
+    return "Finestra movimenti non accettata dalla banca (Revolut: max ~90 giorni dopo i primi minuti dal consenso). Riprova la sync.";
   }
   if (status === 404) {
     return "Risorsa bancaria non trovata.";

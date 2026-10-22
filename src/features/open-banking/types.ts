@@ -102,6 +102,11 @@ export interface GetTransactionsParams {
   dateTo?: string;
   /** Cap Enable Banking pagination (manual/cron use 1–2 to stay under ASPSP quotas). */
   maxPages?: number;
+  /**
+   * Dedicated PDNG page (Intesa). Skip for ASPSPs like Revolut that reject or
+   * ignore transaction_status=PDNG and only expose booked history after consent.
+   */
+  includePending?: boolean;
 }
 
 /** Normalized MoneyFlow-ready transaction before persistence. */
