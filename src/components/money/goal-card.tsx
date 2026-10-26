@@ -60,39 +60,9 @@ export function GoalCard({
             ) : null}
           </div>
         </div>
-        <div className="flex items-center gap-1 shrink-0">
-          {(onEdit || onDelete) && (
-            <>
-              {onEdit && (
-                <Button
-                  type="button"
-                  size="icon"
-                  variant="ghost"
-                  className="size-9 min-h-touch min-w-touch"
-                  aria-label={`Modifica obiettivo ${goal.name}`}
-                  onClick={onEdit}
-                >
-                  <Pencil className="size-4" />
-                </Button>
-              )}
-              {onDelete && (
-                <Button
-                  type="button"
-                  size="icon"
-                  variant="ghost"
-                  className="size-9 min-h-touch min-w-touch text-destructive"
-                  aria-label={`Elimina obiettivo ${goal.name}`}
-                  onClick={onDelete}
-                >
-                  <Trash2 className="size-4" />
-                </Button>
-              )}
-            </>
-          )}
-          <span className="text-xs font-medium text-muted-foreground tabular-nums">
-            {trajectory.percent.toFixed(0)}%
-          </span>
-        </div>
+        <span className="text-xs font-medium text-muted-foreground tabular-nums shrink-0">
+          {trajectory.percent.toFixed(0)}%
+        </span>
       </div>
       <Progress
         value={trajectory.percent}
@@ -128,6 +98,58 @@ export function GoalCard({
               onClick={() => onSettle(goal)}
             >
               Saldato
+            </Button>
+          )}
+          {onEdit && (
+            <Button
+              size="sm"
+              variant="outline"
+              className="min-h-touch"
+              aria-label={`Modifica obiettivo ${goal.name}`}
+              onClick={onEdit}
+            >
+              <Pencil className="size-3.5" />
+              Modifica
+            </Button>
+          )}
+          {onDelete && (
+            <Button
+              size="sm"
+              variant="outline"
+              className="min-h-touch text-destructive border-destructive/30"
+              aria-label={`Elimina obiettivo ${goal.name}`}
+              onClick={onDelete}
+            >
+              <Trash2 className="size-3.5" />
+              Elimina
+            </Button>
+          )}
+        </div>
+      )}
+      {compact && (onEdit || onDelete) && (
+        <div className="flex flex-wrap gap-2">
+          {onEdit && (
+            <Button
+              size="sm"
+              variant="outline"
+              className="min-h-touch"
+              aria-label={`Modifica obiettivo ${goal.name}`}
+              onClick={onEdit}
+            >
+              <Pencil className="size-3.5" />
+              Modifica
+            </Button>
+          )}
+          {onDelete && (
+            <Button
+              size="sm"
+              variant="outline"
+              className="min-h-touch text-destructive border-destructive/30"
+              aria-label={`Elimina obiettivo ${goal.name}`}
+              onClick={onDelete}
+            >
+              <Trash2 className="size-3.5" />
+              Elimina
             </Button>
           )}
         </div>
