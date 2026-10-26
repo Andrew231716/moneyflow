@@ -1,5 +1,6 @@
 "use client";
 
+import { Pencil, Trash2 } from "lucide-react";
 import { Progress } from "@/components/ui/progress";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -14,6 +15,8 @@ export function GoalCard({
   goal,
   onAdd,
   onSettle,
+  onEdit,
+  onDelete,
   className,
   compact,
   showTrajectory = true,
@@ -21,6 +24,8 @@ export function GoalCard({
   goal: Goal;
   onAdd?: (delta: number) => void;
   onSettle?: (goal: Goal) => void;
+  onEdit?: () => void;
+  onDelete?: () => void;
   className?: string;
   compact?: boolean;
   showTrajectory?: boolean;
@@ -93,6 +98,58 @@ export function GoalCard({
               onClick={() => onSettle(goal)}
             >
               Saldato
+            </Button>
+          )}
+          {onEdit && (
+            <Button
+              size="sm"
+              variant="outline"
+              className="min-h-touch"
+              aria-label={`Modifica obiettivo ${goal.name}`}
+              onClick={onEdit}
+            >
+              <Pencil className="size-3.5" />
+              Modifica
+            </Button>
+          )}
+          {onDelete && (
+            <Button
+              size="sm"
+              variant="outline"
+              className="min-h-touch text-destructive border-destructive/30"
+              aria-label={`Elimina obiettivo ${goal.name}`}
+              onClick={onDelete}
+            >
+              <Trash2 className="size-3.5" />
+              Elimina
+            </Button>
+          )}
+        </div>
+      )}
+      {compact && (onEdit || onDelete) && (
+        <div className="flex flex-wrap gap-2">
+          {onEdit && (
+            <Button
+              size="sm"
+              variant="outline"
+              className="min-h-touch"
+              aria-label={`Modifica obiettivo ${goal.name}`}
+              onClick={onEdit}
+            >
+              <Pencil className="size-3.5" />
+              Modifica
+            </Button>
+          )}
+          {onDelete && (
+            <Button
+              size="sm"
+              variant="outline"
+              className="min-h-touch text-destructive border-destructive/30"
+              aria-label={`Elimina obiettivo ${goal.name}`}
+              onClick={onDelete}
+            >
+              <Trash2 className="size-3.5" />
+              Elimina
             </Button>
           )}
         </div>
