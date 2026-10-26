@@ -32,6 +32,13 @@ import {
   GoalSavingsPlanCard,
 } from "@/components/money";
 
+const emptyForm = {
+  name: "",
+  target_amount: "",
+  current_amount: "0",
+  deadline: "",
+};
+
 export function GoalsManager({
   goals,
   savingsAccounts = [],
@@ -43,16 +50,35 @@ export function GoalsManager({
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
-  const [form, setForm] = useState({
-    name: "",
-    target_amount: "",
-    current_amount: "0",
-    deadline: "",
-  });
+  const [editing, setEditing] = useState<Goal | null>(null);
+  const [form, setForm] = useState(emptyForm);
   const [saving, setSaving] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
   const [settleGoal, setSettleGoal] = useState<Goal | null>(null);
   const [deductFromSavings, setDeductFromSavings] = useState(true);
   const [settling, setSettling] = useState(false);
+
+  function openCreate() {
+    setEditing(null);
+    setForm(emptyForm);
+    setOpen(true);
+  }
+
+  function openEdit(goal: Goal) {
+    setEditing(goal);
+    setForm({
+      name: goal.name,
+      target_amount: String(Number(goal.target_amount)),
+      current_amount: String(Number(goal.current_amount)),
+      deadline: goal.deadline ? goal.deadline.slice(0, 10) : "",
+    });
+    setOpen(true);
+  }
+
+  function handleFormOpenChange(next: boolean) {
+    setOpen(next);
+    if (!next) setEditing(null);
+  }
 
   async function save() {
     setSaving(true);
@@ -62,23 +88,117 @@ export function GoalsManager({
         data: { user },
       } = await supabase.auth.getUser();
       if (!user) throw new Error("Non autenticato");
-      const { error } = await supabase.from("goals").insert({
-        user_id: user.id,
-        name: form.name,
-        target_amount: Number.parseFloat(form.target_amount.replace(",", ".")),
-        current_amount:
-          Number.parseFloat(form.current_amount.replace(",", ".")) || 0,
-        deadline: form.deadline || null,
-        settled: false,
-      });
-      if (error) throw error;
-      toast.success("Obiettivo creato");
+
+      const name = form.name.trim();
+      const target = Number.parseFloat(form.target_amount.replace(",", "."));
+      const current =
+        Number.parseFloat(form.current_amount.replace(",", ".")) || 0;
+      if (!name) throw new Error("Indica un nome");
+      if (!Number.isFinite(target) || target <= 0) {
+        throw new Error("Target non valido");
+      }
+      if (!Number.isFinite(current) || current < 0) {
+        throw new Error("Importo già risparmiato non valido");
+      }
+
+      const deadline = form.deadline || null;
+      const status =
+        current >= target
+          ? ("completed" as const)
+          : editing?.status === "completed"
+            ? ("active" as const)
+            : (editing?.status ?? "active");
+
+      if (editing) {
+        const { data, error } = await supabase
+          .from("goals")
+          .update({
+            name,
+            target_amount: target,
+            current_amount: current,
+            deadline,
+            status,
+          })
+          .eq("id", editing.id)
+          .eq("user_id", user.id)
+          .select()
+          .single();
+        if (error) throw error;
+
+        await writeAudit({
+          entity_type: "goal",
+          entity_id: editing.id,
+          action: "update",
+          before_data: editing as unknown as Record<string, unknown>,
+          after_data: data as unknown as Record<string, unknown>,
+        });
+
+        toast.success("Obiettivo aggiornato");
+      } else {
+        const { data, error } = await supabase
+          .from("goals")
+          .insert({
+            user_id: user.id,
+            name,
+            target_amount: target,
+            current_amount: current,
+            deadline,
+            settled: false,
+            status,
+          })
+          .select()
+          .single();
+        if (error) throw error;
+
+        await writeAudit({
+          entity_type: "goal",
+          entity_id: data.id,
+          action: "create",
+          after_data: data as unknown as Record<string, unknown>,
+        });
+
+        toast.success("Obiettivo creato");
+      }
       setOpen(false);
+      setEditing(null);
       router.refresh();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Errore");
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function removeGoal(goal: Goal) {
+    if (!window.confirm(`Eliminare l’obiettivo «${goal.name}»?`)) return;
+    setDeletingId(goal.id);
+    try {
+      const supabase = createClient();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (!user) throw new Error("Non autenticato");
+
+      const { error } = await supabase
+        .from("goals")
+        .delete()
+        .eq("id", goal.id)
+        .eq("user_id", user.id);
+      if (error) throw error;
+
+      await writeAudit({
+        entity_type: "goal",
+        entity_id: goal.id,
+        action: "delete",
+        before_data: goal as unknown as Record<string, unknown>,
+      });
+
+      toast.success("Obiettivo eliminato");
+      router.refresh();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Errore");
+    } finally {
+      setDeletingId(null);
     }
   }
 
@@ -177,7 +297,7 @@ export function GoalsManager({
         title="Obiettivi"
         description="Es. viaggio in Islanda: target + scadenza → piano di quanto mettere da parte e dove tagliare"
         actions={
-          <Button onClick={() => setOpen(true)} className="min-h-touch">
+          <Button onClick={openCreate} className="min-h-touch">
             Nuovo obiettivo
           </Button>
         }
@@ -196,7 +316,7 @@ export function GoalsManager({
           icon={<Target className="h-6 w-6" />}
           title="Nessun obiettivo"
           description="Crea un obiettivo con importo e data (es. Islanda 1.200 € tra 4 mesi) per ricevere il piano di risparmio."
-          action={<Button onClick={() => setOpen(true)}>Nuovo obiettivo</Button>}
+          action={<Button onClick={openCreate}>Nuovo obiettivo</Button>}
         />
       ) : (
         <div className="space-y-6">
@@ -210,6 +330,10 @@ export function GoalsManager({
                   setDeductFromSavings(savingsAccounts.length > 0);
                   setSettleGoal(goal);
                 }}
+                onEdit={() => openEdit(g)}
+                onDelete={
+                  deletingId === g.id ? undefined : () => void removeGoal(g)
+                }
               />
             ))}
           </div>
@@ -220,7 +344,17 @@ export function GoalsManager({
               </h3>
               <div className="grid gap-3 sm:grid-cols-2">
                 {settledGoals.map((g) => (
-                  <GoalCard key={g.id} goal={g} showTrajectory={false} />
+                  <GoalCard
+                    key={g.id}
+                    goal={g}
+                    showTrajectory={false}
+                    onEdit={() => openEdit(g)}
+                    onDelete={
+                      deletingId === g.id
+                        ? undefined
+                        : () => void removeGoal(g)
+                    }
+                  />
                 ))}
               </div>
             </div>
@@ -230,15 +364,19 @@ export function GoalsManager({
 
       <ResponsiveFormShell
         open={open}
-        onOpenChange={setOpen}
-        title="Nuovo obiettivo"
+        onOpenChange={handleFormOpenChange}
+        title={editing ? "Modifica obiettivo" : "Nuovo obiettivo"}
         footer={
           <Button
             onClick={save}
             disabled={saving || !form.name || !form.target_amount}
             className="w-full sm:w-auto min-h-touch"
           >
-            {saving ? "Salvataggio…" : "Salva"}
+            {saving
+              ? "Salvataggio…"
+              : editing
+                ? "Aggiorna"
+                : "Salva"}
           </Button>
         }
       >

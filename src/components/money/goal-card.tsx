@@ -1,5 +1,6 @@
 "use client";
 
+import { Pencil, Trash2 } from "lucide-react";
 import { Progress } from "@/components/ui/progress";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -14,6 +15,8 @@ export function GoalCard({
   goal,
   onAdd,
   onSettle,
+  onEdit,
+  onDelete,
   className,
   compact,
   showTrajectory = true,
@@ -21,6 +24,8 @@ export function GoalCard({
   goal: Goal;
   onAdd?: (delta: number) => void;
   onSettle?: (goal: Goal) => void;
+  onEdit?: () => void;
+  onDelete?: () => void;
   className?: string;
   compact?: boolean;
   showTrajectory?: boolean;
@@ -55,9 +60,39 @@ export function GoalCard({
             ) : null}
           </div>
         </div>
-        <span className="text-xs font-medium text-muted-foreground tabular-nums shrink-0">
-          {trajectory.percent.toFixed(0)}%
-        </span>
+        <div className="flex items-center gap-1 shrink-0">
+          {(onEdit || onDelete) && (
+            <>
+              {onEdit && (
+                <Button
+                  type="button"
+                  size="icon"
+                  variant="ghost"
+                  className="size-9 min-h-touch min-w-touch"
+                  aria-label={`Modifica obiettivo ${goal.name}`}
+                  onClick={onEdit}
+                >
+                  <Pencil className="size-4" />
+                </Button>
+              )}
+              {onDelete && (
+                <Button
+                  type="button"
+                  size="icon"
+                  variant="ghost"
+                  className="size-9 min-h-touch min-w-touch text-destructive"
+                  aria-label={`Elimina obiettivo ${goal.name}`}
+                  onClick={onDelete}
+                >
+                  <Trash2 className="size-4" />
+                </Button>
+              )}
+            </>
+          )}
+          <span className="text-xs font-medium text-muted-foreground tabular-nums">
+            {trajectory.percent.toFixed(0)}%
+          </span>
+        </div>
       </div>
       <Progress
         value={trajectory.percent}
