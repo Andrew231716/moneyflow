@@ -31,16 +31,21 @@ export async function adjustAccountBalance(
   delta: number
 ) {
   const supabase = createClient();
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from("accounts")
     .select("balance")
     .eq("id", accountId)
     .single();
-  if (!data) return;
-  await supabase
+  if (error) throw new Error(error.message || "Impossibile leggere il saldo del conto.");
+  if (!data) throw new Error("Conto non trovato.");
+
+  const { error: updateError } = await supabase
     .from("accounts")
     .update({ balance: Number(data.balance) + delta })
     .eq("id", accountId);
+  if (updateError) {
+    throw new Error(updateError.message || "Impossibile aggiornare il saldo del conto.");
+  }
 }
 
 export function balanceDeltaForTx(

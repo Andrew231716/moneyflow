@@ -1,8 +1,8 @@
 # MoneyFlow
 
-Web app / PWA per la gestione delle finanze personali. Stack gratuito: **Next.js 15**, **TypeScript**, **Tailwind**, **shadcn/ui**, **Supabase** (Auth + PostgreSQL), PWA via `@ducanh2912/next-pwa`.
+Web app / PWA per la gestione delle finanze personali. Stack gratuito: **Next.js 15**, **TypeScript**, **Tailwind**, **shadcn/ui**, **Supabase** (Auth + PostgreSQL). Installabile via manifest (service worker opzionale: il plugin `@ducanh2912/next-pwa` è disattivato in `next.config.mjs`).
 
-Open Banking (GoCardless) è implementato in `src/features/open-banking/**` e `src/app/api/open-banking/**` (vedi anche `supabase/migrations/002_open_banking.sql`).
+Open Banking (Enable Banking / GoCardless) è in `src/features/open-banking/**` e `src/app/api/open-banking/**`.
 
 ## Requisiti
 
@@ -20,12 +20,16 @@ npm install
 
 ## Database (obbligatorio in ordine)
 
-Esegui entrambi gli script SQL nel SQL Editor di Supabase:
+Esegui gli script SQL nel SQL Editor di Supabase **in ordine**:
 
-1. **`supabase/migrations/001_initial_schema.sql`** — profiles, accounts, categories, transactions (con campi enrichment OB nullable), budgets, goals, recurring, classification_rules, assistant_actions, audit_log, RLS, seed categorie/regole al signup.
-2. **`supabase/migrations/002_open_banking.sql`** — `bank_connections`, `bank_accounts`, FK su `transactions.bank_account_id`, colonne `fingerprint`, `merchant`, `possible_transfer_match_id`, `manual_override_fields`, indici dedup, RLS.
+1. **`001_initial_schema.sql`** — profiles, accounts, categories, transactions, budgets, goals, recurring, classification_rules, assistant_actions, audit_log, RLS, seed.
+2. **`002_open_banking.sql`** — `bank_connections`, `bank_accounts`, fingerprint/merchant/dedup, RLS.
+3. **`003_goals_settled.sql`** — flag `settled` / `settled_at` sugli obiettivi.
+4. **`004_debts.sql`** — tabella debiti manuali.
+5. **`005_auto_category.sql`** — classificazione automatica movimenti banca.
+6. **`006_booking_status.sql`** — `booking_status` (movimenti in sospeso / non contabilizzati).
 
-Non invertire l’ordine: 002 dipende da 001.
+Non invertire l’ordine: ogni file dipende dai precedenti.
 
 ## Open Banking
 
@@ -74,6 +78,8 @@ Vedi `.env.example`:
 | `ENABLEBANKING_PRIVATE_KEY` | Solo server — chiave privata PEM (mai in git) |
 | `GOCARDLESS_SECRET_ID` / `GOCARDLESS_SECRET_KEY` | Legacy, solo se `OPEN_BANKING_PROVIDER=gocardless` |
 | `OPEN_BANKING_REDIRECT_URL` | Callback AIS (whitelist nel Control Panel) |
+| `SUPABASE_SERVICE_ROLE_KEY` | Solo server — sync cron (bypassa RLS) |
+| `CRON_SECRET` | Bearer per `GET /api/cron/open-banking-sync` |
 
 ## Deploy su Vercel (Hobby / free)
 
@@ -122,6 +128,8 @@ npx vercel --prod
 | `ENABLEBANKING_APPLICATION_ID` | Production, Preview | Da Enable Banking Control Panel |
 | `ENABLEBANKING_PRIVATE_KEY` | Production, Preview | PEM RSA — non committare |
 | `OPEN_BANKING_REDIRECT_URL` | Production | `https://moneyflow-ecru.vercel.app/api/open-banking/callback` |
+| `SUPABASE_SERVICE_ROLE_KEY` | Production | Obbligatoria per il cron sync banca |
+| `CRON_SECRET` | Production | Stesso secret usato da Vercel Cron (`Authorization: Bearer …`) |
 | `GOCARDLESS_*` | opzionale | Solo se `OPEN_BANKING_PROVIDER=gocardless` |
 
 Dopo il deploy, in **Supabase → Authentication → URL Configuration**:

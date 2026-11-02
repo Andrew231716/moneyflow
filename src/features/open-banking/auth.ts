@@ -37,17 +37,27 @@ export function italianErrorResponse(error: unknown): NextResponse {
     "name" in error &&
     (error as { name: string }).name === "OpenBankingProviderError"
   ) {
-    const status =
+    const providerStatus =
       "status" in error && typeof (error as { status: unknown }).status === "number"
         ? (error as { status: number }).status
         : 502;
+    // Never forward bank/provider 401/403 as our auth status — clients would
+    // treat a bank consent issue as "sessione MoneyFlow scaduta".
+    const status =
+      providerStatus === 401 || providerStatus === 403
+        ? 502
+        : providerStatus === 429
+          ? 429
+          : providerStatus >= 400 && providerStatus < 600
+            ? providerStatus
+            : 502;
     return NextResponse.json(
       {
         error:
           (error as Error).message ||
           "Errore nella comunicazione con il provider bancario.",
       },
-      { status: status >= 400 && status < 600 ? status : 502 }
+      { status }
     );
   }
   // Generic — never leak secrets or bank payloads
