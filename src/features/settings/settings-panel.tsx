@@ -20,6 +20,8 @@ import {
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { AppLockSettings } from "@/features/security/app-lock-settings";
+import { clearAppLockConfig } from "@/lib/security/app-lock";
 
 export function SettingsPanel({
   categories,
@@ -35,6 +37,7 @@ export function SettingsPanel({
   const [ruleCategory, setRuleCategory] = useState("");
 
   async function logout() {
+    clearAppLockConfig();
     const supabase = createClient();
     await supabase.auth.signOut();
     router.push("/login");
@@ -230,6 +233,8 @@ export function SettingsPanel({
           </Button>
         </CardContent>
       </Card>
+
+      <AppLockSettings />
 
       <Card>
         <CardHeader>
