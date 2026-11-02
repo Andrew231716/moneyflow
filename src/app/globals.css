@@ -154,7 +154,7 @@
   }
 
   .pb-nav {
-    /* Nav row (~2.75rem) + spacing + home-indicator inset */
-    padding-bottom: calc(4.75rem + env(safe-area-inset-bottom, 0px));
+    /* Nav row (3.5rem) + spacing + home-indicator inset */
+    padding-bottom: calc(5.25rem + env(safe-area-inset-bottom, 0px));
   }
 }
