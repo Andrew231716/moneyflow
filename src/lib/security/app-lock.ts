@@ -1,6 +1,8 @@
 const ENABLED_KEY = "moneyflow.appLock.enabled";
 const CREDENTIAL_KEY = "moneyflow.appLock.credentialId";
 const USER_KEY = "moneyflow.appLock.userId";
+const PIN_SALT_KEY = "moneyflow.appLock.pinSalt";
+const PIN_HASH_KEY = "moneyflow.appLock.pinHash";
 const UNLOCKED_KEY = "moneyflow.appLock.unlocked";
 const HIDDEN_AT_KEY = "moneyflow.appLock.hiddenAt";
 
@@ -33,35 +35,109 @@ export type AppLockConfig = {
   enabled: boolean;
   credentialId: string | null;
   userId: string | null;
+  hasPin: boolean;
+  hasBiometric: boolean;
 };
 
 export function readAppLockConfig(): AppLockConfig {
   if (typeof localStorage === "undefined") {
-    return { enabled: false, credentialId: null, userId: null };
+    return {
+      enabled: false,
+      credentialId: null,
+      userId: null,
+      hasPin: false,
+      hasBiometric: false,
+    };
   }
+  const credentialId = localStorage.getItem(CREDENTIAL_KEY);
+  const hasPin = Boolean(
+    localStorage.getItem(PIN_HASH_KEY) && localStorage.getItem(PIN_SALT_KEY)
+  );
   return {
     enabled: localStorage.getItem(ENABLED_KEY) === "1",
-    credentialId: localStorage.getItem(CREDENTIAL_KEY),
+    credentialId,
     userId: localStorage.getItem(USER_KEY),
+    hasPin,
+    hasBiometric: Boolean(credentialId),
   };
 }
 
 export function writeAppLockConfig(config: {
   enabled: boolean;
-  credentialId: string;
   userId: string;
+  credentialId?: string | null;
 }) {
   localStorage.setItem(ENABLED_KEY, config.enabled ? "1" : "0");
-  localStorage.setItem(CREDENTIAL_KEY, config.credentialId);
   localStorage.setItem(USER_KEY, config.userId);
+  if (config.credentialId) {
+    localStorage.setItem(CREDENTIAL_KEY, config.credentialId);
+  } else if (config.credentialId === null) {
+    localStorage.removeItem(CREDENTIAL_KEY);
+  }
 }
 
 export function clearAppLockConfig() {
   localStorage.removeItem(ENABLED_KEY);
   localStorage.removeItem(CREDENTIAL_KEY);
   localStorage.removeItem(USER_KEY);
+  localStorage.removeItem(PIN_SALT_KEY);
+  localStorage.removeItem(PIN_HASH_KEY);
   sessionStorage.removeItem(UNLOCKED_KEY);
   sessionStorage.removeItem(HIDDEN_AT_KEY);
+}
+
+function randomSalt(): string {
+  return bufferToBase64Url(randomChallenge(16));
+}
+
+async function derivePinHash(pin: string, saltB64: string): Promise<string> {
+  const enc = new TextEncoder();
+  const keyMaterial = await crypto.subtle.importKey(
+    "raw",
+    enc.encode(pin),
+    "PBKDF2",
+    false,
+    ["deriveBits"]
+  );
+  const bits = await crypto.subtle.deriveBits(
+    {
+      name: "PBKDF2",
+      salt: enc.encode(saltB64),
+      iterations: 120_000,
+      hash: "SHA-256",
+    },
+    keyMaterial,
+    256
+  );
+  return bufferToBase64Url(bits);
+}
+
+export function isValidPin(pin: string): boolean {
+  return /^\d{4,8}$/.test(pin);
+}
+
+export async function saveAppLockPin(pin: string): Promise<void> {
+  if (!isValidPin(pin)) {
+    throw new Error("Il PIN deve avere da 4 a 8 cifre");
+  }
+  const salt = randomSalt();
+  const hash = await derivePinHash(pin, salt);
+  localStorage.setItem(PIN_SALT_KEY, salt);
+  localStorage.setItem(PIN_HASH_KEY, hash);
+}
+
+export async function verifyAppLockPin(pin: string): Promise<boolean> {
+  const salt = localStorage.getItem(PIN_SALT_KEY);
+  const expected = localStorage.getItem(PIN_HASH_KEY);
+  if (!salt || !expected) return false;
+  const actual = await derivePinHash(pin, salt);
+  return actual === expected;
+}
+
+export function hasAppLockPin(): boolean {
+  return Boolean(
+    localStorage.getItem(PIN_HASH_KEY) && localStorage.getItem(PIN_SALT_KEY)
+  );
 }
 
 export function isAppLockUnlocked(): boolean {

@@ -35,10 +35,13 @@ import {
   ResponsiveFormShell,
 } from "@/components/money";
 
+import { SUPPORTED_CURRENCIES } from "@/lib/finance/currency";
+
 const emptyForm = {
   name: "",
   type: "bank" as AccountType,
   balance: "0",
+  currency: "EUR",
   color: "#0d9488",
 };
 
@@ -89,6 +92,7 @@ export function AccountsManager({
       name: a.name,
       type: a.type,
       balance: String(a.balance),
+      currency: (a.currency || "EUR").toUpperCase(),
       color: a.color,
     });
     setOpen(true);
@@ -107,6 +111,7 @@ export function AccountsManager({
         name: form.name.trim(),
         type: form.type,
         balance: Number.parseFloat(form.balance.replace(",", ".")) || 0,
+        currency: form.currency || "EUR",
         color: form.color,
         user_id: user.id,
       };
@@ -118,6 +123,7 @@ export function AccountsManager({
             name: payload.name,
             type: payload.type,
             balance: payload.balance,
+            currency: payload.currency,
             color: payload.color,
           })
           .eq("id", editing.id);
@@ -329,6 +335,27 @@ export function AccountsManager({
           value={form.balance}
           onChange={(balance) => setForm({ ...form, balance })}
         />
+        <div className="space-y-2">
+          <Label>Valuta</Label>
+          <Select
+            value={form.currency}
+            onValueChange={(currency) => setForm({ ...form, currency })}
+          >
+            <SelectTrigger className="min-h-touch">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {SUPPORTED_CURRENCIES.map((c) => (
+                <SelectItem key={c} value={c}>
+                  {c}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <p className="text-xs text-muted-foreground">
+            I totali Home non mescolano valute diverse (niente FX a pagamento).
+          </p>
+        </div>
         <div className="space-y-2">
           <Label>Colore</Label>
           <Input

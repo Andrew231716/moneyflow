@@ -26,11 +26,30 @@ export async function writeAudit(params: {
   });
 }
 
+/**
+ * Prefer the atomic Postgres RPC (migration 007). Falls back to a guarded
+ * read-modify-write if the function is not deployed yet.
+ */
 export async function adjustAccountBalance(
   accountId: string,
   delta: number
 ) {
   const supabase = createClient();
+  const { error: rpcError } = await supabase.rpc("adjust_account_balance", {
+    p_account_id: accountId,
+    p_delta: delta,
+  });
+
+  if (!rpcError) return;
+
+  const missingFn =
+    rpcError.code === "PGRST202" ||
+    /adjust_account_balance|Could not find the function/i.test(rpcError.message);
+
+  if (!missingFn) {
+    throw new Error(rpcError.message || "Impossibile aggiornare il saldo del conto.");
+  }
+
   const { data, error } = await supabase
     .from("accounts")
     .select("balance")
@@ -55,6 +74,5 @@ export function balanceDeltaForTx(
 ): number {
   if (type === "income") return amount;
   if (type === "expense") return -amount;
-  // transfer: from account decreases, to increases
   return side === "from" ? -amount : amount;
 }

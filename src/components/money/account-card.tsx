@@ -1,6 +1,8 @@
+import Link from "next/link";
 import { Pencil, Archive } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { normalizeCurrency } from "@/lib/finance/currency";
 import type { Account, AccountType } from "@/types/database";
 import { MoneyValue } from "./money-value";
 import { StatusBadge } from "./status-badge";
@@ -16,32 +18,42 @@ export function AccountCard({
   account,
   onEdit,
   onArchive,
+  href,
   className,
 }: {
   account: Account;
   onEdit?: () => void;
   onArchive?: () => void;
+  href?: string;
   className?: string;
 }) {
-  return (
-    <div className={cn("mf-surface overflow-hidden", className)}>
+  const currency = normalizeCurrency(account.currency);
+  const body = (
+    <>
       <div className="h-1.5" style={{ background: account.color }} aria-hidden />
       <div className="p-4 space-y-3">
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0">
             <p className="font-semibold truncate">{account.name}</p>
-            <StatusBadge tone="neutral" className="mt-1.5">
-              {typeLabels[account.type]}
-            </StatusBadge>
+            <div className="mt-1.5 flex flex-wrap gap-1.5">
+              <StatusBadge tone="neutral">{typeLabels[account.type]}</StatusBadge>
+              {currency !== "EUR" && (
+                <StatusBadge tone="neutral">{currency}</StatusBadge>
+              )}
+            </div>
           </div>
           {(onEdit || onArchive) && (
-            <div className="flex gap-0.5">
+            <div className="flex gap-0.5" onClick={(e) => e.preventDefault()}>
               {onEdit && (
                 <Button
                   variant="ghost"
                   size="icon"
                   className="min-h-touch min-w-touch"
-                  onClick={onEdit}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    onEdit();
+                  }}
                   aria-label={`Modifica ${account.name}`}
                 >
                   <Pencil className="h-4 w-4" />
@@ -52,7 +64,11 @@ export function AccountCard({
                   variant="ghost"
                   size="icon"
                   className="min-h-touch min-w-touch"
-                  onClick={onArchive}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    onArchive();
+                  }}
                   aria-label={`Archivia ${account.name}`}
                 >
                   <Archive className="h-4 w-4" />
@@ -61,9 +77,31 @@ export function AccountCard({
             </div>
           )}
         </div>
-        <MoneyValue amount={Number(account.balance)} size="lg" />
+        <MoneyValue
+          amount={Number(account.balance)}
+          currency={currency}
+          size="lg"
+        />
       </div>
-    </div>
+    </>
+  );
+
+  if (href) {
+    return (
+      <Link
+        href={href}
+        className={cn(
+          "mf-surface overflow-hidden block transition-colors hover:bg-muted/30",
+          className
+        )}
+      >
+        {body}
+      </Link>
+    );
+  }
+
+  return (
+    <div className={cn("mf-surface overflow-hidden", className)}>{body}</div>
   );
 }
 
