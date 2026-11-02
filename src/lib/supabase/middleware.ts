@@ -52,7 +52,7 @@ export async function updateSession(request: NextRequest) {
     pathname === "/manifest.webmanifest" ||
     pathname === "/favicon.ico" ||
     pathname === "/favicon.svg" ||
-    pathname === "/sw.js" ||
+    pathname === "/moneyflow-sw.js" ||
     pathname.startsWith("/api/open-banking/callback") ||
     // Cron authenticates with CRON_SECRET inside the route (no Supabase session).
     pathname.startsWith("/api/cron/");
