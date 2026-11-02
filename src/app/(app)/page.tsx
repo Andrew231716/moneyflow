@@ -27,8 +27,8 @@ import {
 } from "@/lib/finance/currency";
 import { rankCutPotential } from "@/lib/finance/cut-potential";
 import { calcGoalTrajectories } from "@/lib/finance/goal-trajectory";
-import { buildConsentAlerts } from "@/features/alerts/app-alerts";
-import { listUserBankConnections } from "@/features/open-banking/service";
+import { buildConsentAlerts } from "@/features/alerts/build-consent-alerts";
+import { listBankConnectionsForAlerts } from "@/features/open-banking/list-connections";
 import { createClient } from "@/lib/supabase/server";
 import { subMonths } from "date-fns";
 
@@ -53,7 +53,10 @@ export default async function DashboardPage() {
       fetchRecurring(),
       fetchDebts(),
       user
-        ? listUserBankConnections({ supabase, userId: user.id }).catch(() => [])
+        ? listBankConnectionsForAlerts({
+            supabase,
+            userId: user.id,
+          }).catch(() => [])
         : Promise.resolve([]),
     ]);
 
