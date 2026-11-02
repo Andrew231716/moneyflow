@@ -15,24 +15,32 @@ import { createClient } from "@/lib/supabase/client";
 import {
   biometricLabel,
   clearAppLockConfig,
+  hasAppLockPin,
   isAppLockUnlocked,
   isPlatformAuthenticatorAvailable,
+  isValidPin,
   markAppHidden,
   readAppLockConfig,
   registerAppLockCredential,
+  saveAppLockPin,
   setAppLockUnlocked,
   shouldRelockAfterBackground,
   verifyAppLockCredential,
+  verifyAppLockPin,
   writeAppLockConfig,
 } from "@/lib/security/app-lock";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 
 type AppLockContextValue = {
   supported: boolean | null;
   enabled: boolean;
+  hasPin: boolean;
+  hasBiometric: boolean;
   label: string;
   enabling: boolean;
-  enable: () => Promise<void>;
+  enableWithPin: (pin: string, withBiometric: boolean) => Promise<void>;
   disable: () => void;
   lockNow: () => void;
 };
@@ -48,11 +56,15 @@ export function useAppLock() {
 export function AppLockProvider({ children }: { children: ReactNode }) {
   const [supported, setSupported] = useState<boolean | null>(null);
   const [enabled, setEnabled] = useState(false);
+  const [hasPin, setHasPin] = useState(false);
+  const [hasBiometric, setHasBiometric] = useState(false);
   const [locked, setLocked] = useState(false);
   const [ready, setReady] = useState(false);
   const [enabling, setEnabling] = useState(false);
   const [unlocking, setUnlocking] = useState(false);
   const [label, setLabel] = useState("biometria");
+  const [pinInput, setPinInput] = useState("");
+  const [showPin, setShowPin] = useState(false);
 
   const syncFromStorage = useCallback(async () => {
     const available = await isPlatformAuthenticatorAvailable();
@@ -64,13 +76,16 @@ export function AppLockProvider({ children }: { children: ReactNode }) {
       data: { user },
     } = await createClient().auth.getUser();
 
-    if (
+    const lockReady =
       config.enabled &&
-      config.credentialId &&
       user &&
-      config.userId === user.id
-    ) {
+      config.userId === user.id &&
+      (config.hasPin || config.hasBiometric);
+
+    if (lockReady) {
       setEnabled(true);
+      setHasPin(config.hasPin);
+      setHasBiometric(config.hasBiometric);
       if (!isAppLockUnlocked()) setLocked(true);
       else setLocked(false);
     } else {
@@ -78,6 +93,8 @@ export function AppLockProvider({ children }: { children: ReactNode }) {
         clearAppLockConfig();
       }
       setEnabled(false);
+      setHasPin(false);
+      setHasBiometric(false);
       setLocked(false);
     }
     setReady(true);
@@ -97,67 +114,89 @@ export function AppLockProvider({ children }: { children: ReactNode }) {
       if (shouldRelockAfterBackground()) {
         setAppLockUnlocked(false);
         setLocked(true);
+        setShowPin(false);
+        setPinInput("");
       }
     }
     document.addEventListener("visibilitychange", onVisibility);
     return () => document.removeEventListener("visibilitychange", onVisibility);
   }, [enabled]);
 
-  const enable = useCallback(async () => {
-    setEnabling(true);
-    try {
-      const available = await isPlatformAuthenticatorAvailable();
-      if (!available) {
-        throw new Error(
-          "Questo dispositivo non supporta Face ID / biometria nel browser"
-        );
-      }
-      const supabase = createClient();
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (!user) throw new Error("Non autenticato");
+  const enableWithPin = useCallback(
+    async (pin: string, withBiometric: boolean) => {
+      setEnabling(true);
+      try {
+        if (!isValidPin(pin)) {
+          throw new Error("Il PIN deve avere da 4 a 8 cifre");
+        }
+        const supabase = createClient();
+        const {
+          data: { user },
+        } = await supabase.auth.getUser();
+        if (!user) throw new Error("Non autenticato");
 
-      const credentialId = await registerAppLockCredential({
-        userId: user.id,
-        userName: user.email ?? user.id,
-      });
-      writeAppLockConfig({
-        enabled: true,
-        credentialId,
-        userId: user.id,
-      });
-      setAppLockUnlocked(true);
-      setEnabled(true);
-      setLocked(false);
-      toast.success(`Sblocco con ${biometricLabel()} attivato`);
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Attivazione non riuscita");
-      throw e;
-    } finally {
-      setEnabling(false);
-    }
-  }, []);
+        await saveAppLockPin(pin);
+
+        let credentialId: string | null = null;
+        if (withBiometric) {
+          const available = await isPlatformAuthenticatorAvailable();
+          if (!available) {
+            throw new Error(
+              "Questo dispositivo non supporta Face ID / biometria nel browser"
+            );
+          }
+          credentialId = await registerAppLockCredential({
+            userId: user.id,
+            userName: user.email ?? user.id,
+          });
+        }
+
+        writeAppLockConfig({
+          enabled: true,
+          userId: user.id,
+          credentialId,
+        });
+        setAppLockUnlocked(true);
+        setEnabled(true);
+        setHasPin(true);
+        setHasBiometric(Boolean(credentialId));
+        setLocked(false);
+        toast.success(
+          withBiometric
+            ? `Sblocco con ${biometricLabel()} + PIN attivato`
+            : "Sblocco con PIN attivato"
+        );
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : "Attivazione non riuscita");
+        throw e;
+      } finally {
+        setEnabling(false);
+      }
+    },
+    []
+  );
 
   const disable = useCallback(() => {
     clearAppLockConfig();
     setEnabled(false);
+    setHasPin(false);
+    setHasBiometric(false);
     setLocked(false);
-    toast.success("Sblocco biometrico disattivato");
+    toast.success("Sblocco app disattivato");
   }, []);
 
   const lockNow = useCallback(() => {
     if (!enabled) return;
     setAppLockUnlocked(false);
     setLocked(true);
+    setShowPin(false);
+    setPinInput("");
   }, [enabled]);
 
-  const unlock = useCallback(async () => {
+  const unlockBiometric = useCallback(async () => {
     const config = readAppLockConfig();
     if (!config.credentialId) {
-      clearAppLockConfig();
-      setEnabled(false);
-      setLocked(false);
+      setShowPin(true);
       return;
     }
     setUnlocking(true);
@@ -165,32 +204,66 @@ export function AppLockProvider({ children }: { children: ReactNode }) {
       await verifyAppLockCredential(config.credentialId);
       setAppLockUnlocked(true);
       setLocked(false);
+      setPinInput("");
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Sblocco non riuscito");
+      toast.error(e instanceof Error ? e.message : "Sblocco biometrico non riuscito");
+      setShowPin(true);
     } finally {
       setUnlocking(false);
     }
   }, []);
 
+  const unlockPin = useCallback(async () => {
+    setUnlocking(true);
+    try {
+      const ok = await verifyAppLockPin(pinInput);
+      if (!ok) throw new Error("PIN non corretto");
+      setAppLockUnlocked(true);
+      setLocked(false);
+      setPinInput("");
+      setShowPin(false);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Sblocco non riuscito");
+    } finally {
+      setUnlocking(false);
+    }
+  }, [pinInput]);
+
   useEffect(() => {
     if (!ready || !locked || !enabled) return;
+    if (!hasBiometric) {
+      setShowPin(true);
+      return;
+    }
     const t = window.setTimeout(() => {
-      void unlock();
+      void unlockBiometric();
     }, 350);
     return () => window.clearTimeout(t);
-  }, [ready, locked, enabled, unlock]);
+  }, [ready, locked, enabled, hasBiometric, unlockBiometric]);
 
   const value = useMemo<AppLockContextValue>(
     () => ({
       supported,
       enabled,
+      hasPin,
+      hasBiometric,
       label,
       enabling,
-      enable,
+      enableWithPin,
       disable,
       lockNow,
     }),
-    [supported, enabled, label, enabling, enable, disable, lockNow]
+    [
+      supported,
+      enabled,
+      hasPin,
+      hasBiometric,
+      label,
+      enabling,
+      enableWithPin,
+      disable,
+      lockNow,
+    ]
   );
 
   return (
@@ -208,17 +281,57 @@ export function AppLockProvider({ children }: { children: ReactNode }) {
           <div className="max-w-sm space-y-2 text-center">
             <h1 className="text-xl font-semibold tracking-tight">MoneyFlow</h1>
             <p className="text-sm text-muted-foreground">
-              Sblocca con {label} per continuare
+              {showPin || !hasBiometric
+                ? "Inserisci il PIN per continuare"
+                : `Sblocca con ${label} (o usa il PIN di backup)`}
             </p>
           </div>
           <div className="flex w-full max-w-xs flex-col gap-2">
-            <Button
-              className="min-h-touch w-full"
-              disabled={unlocking}
-              onClick={() => void unlock()}
-            >
-              {unlocking ? "Verifica…" : `Sblocca con ${label}`}
-            </Button>
+            {hasBiometric && !showPin && (
+              <Button
+                className="min-h-touch w-full"
+                disabled={unlocking}
+                onClick={() => void unlockBiometric()}
+              >
+                {unlocking ? "Verifica…" : `Sblocca con ${label}`}
+              </Button>
+            )}
+            {(showPin || !hasBiometric || hasAppLockPin()) && (
+              <div className="space-y-2 rounded-lg border p-3">
+                <Label htmlFor="app-lock-pin">PIN</Label>
+                <Input
+                  id="app-lock-pin"
+                  type="password"
+                  inputMode="numeric"
+                  autoComplete="one-time-code"
+                  maxLength={8}
+                  value={pinInput}
+                  onChange={(e) =>
+                    setPinInput(e.target.value.replace(/\D/g, "").slice(0, 8))
+                  }
+                  className="min-h-touch text-center tracking-[0.3em]"
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") void unlockPin();
+                  }}
+                />
+                <Button
+                  className="min-h-touch w-full"
+                  disabled={unlocking || pinInput.length < 4}
+                  onClick={() => void unlockPin()}
+                >
+                  Sblocca con PIN
+                </Button>
+              </div>
+            )}
+            {hasBiometric && !showPin && (
+              <Button
+                variant="outline"
+                className="min-h-touch w-full"
+                onClick={() => setShowPin(true)}
+              >
+                Usa PIN di backup
+              </Button>
+            )}
             <Button
               variant="ghost"
               className="min-h-touch w-full"

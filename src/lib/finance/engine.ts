@@ -20,6 +20,7 @@ import type {
   RecurringTransaction,
   Transaction,
 } from "@/types/database";
+import { primaryCurrencyTotal } from "@/lib/finance/currency";
 
 export function getBudgetState(percent: number): BudgetProgressState {
   if (percent >= 100) return "over";
@@ -29,9 +30,8 @@ export function getBudgetState(percent: number): BudgetProgressState {
 }
 
 export function calcTotalAvailability(accounts: Account[]): number {
-  return accounts
-    .filter((a) => !a.is_archived)
-    .reduce((sum, a) => sum + Number(a.balance), 0);
+  // Sum only the primary currency group so multi-currency accounts are not mixed.
+  return primaryCurrencyTotal(accounts).total;
 }
 
 export function isIncomeOrExpense(tx: Transaction): boolean {

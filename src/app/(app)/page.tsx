@@ -21,8 +21,15 @@ import {
   forecastMonthEnd,
   generateInsights,
 } from "@/lib/finance/engine";
+import {
+  groupBalancesByCurrency,
+  primaryCurrencyTotal,
+} from "@/lib/finance/currency";
 import { rankCutPotential } from "@/lib/finance/cut-potential";
 import { calcGoalTrajectories } from "@/lib/finance/goal-trajectory";
+import { buildConsentAlerts } from "@/features/alerts/app-alerts";
+import { listUserBankConnections } from "@/features/open-banking/service";
+import { createClient } from "@/lib/supabase/server";
 import { subMonths } from "date-fns";
 
 export const dynamic = "force-dynamic";
@@ -32,7 +39,12 @@ export default async function DashboardPage() {
     return null;
   }
 
-  const [accounts, transactions, budgets, goals, recurring, debts] =
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  const [accounts, transactions, budgets, goals, recurring, debts, connections] =
     await Promise.all([
       fetchAccounts(),
       fetchTransactions(12),
@@ -40,6 +52,9 @@ export default async function DashboardPage() {
       fetchGoals(),
       fetchRecurring(),
       fetchDebts(),
+      user
+        ? listUserBankConnections({ supabase, userId: user.id }).catch(() => [])
+        : Promise.resolve([]),
     ]);
 
   const now = new Date();
@@ -57,6 +72,7 @@ export default async function DashboardPage() {
     previousSummary,
   });
   const reservedGoalsTotal = calcReservedGoalsTotal(goals);
+  const primary = primaryCurrencyTotal(accounts);
   const availability = calcDisponibilitaTotale(accounts);
   const openDebtsTotal = calcOpenDebtsTotal(debts);
   const netWorth = calcNetWorth(availability, debts);
@@ -72,11 +88,15 @@ export default async function DashboardPage() {
   const goalTrajectories = calcGoalTrajectories(goals, now).filter(
     (t) => !goals.find((g) => g.id === t.goalId)?.settled
   );
+  const consentAlerts = buildConsentAlerts(connections);
+  const currencyGroups = groupBalancesByCurrency(accounts);
 
   return (
     <AppShell title="Home">
       <DashboardView
         availability={availability}
+        availabilityCurrency={primary.currency}
+        currencyGroups={currencyGroups}
         summary={summary}
         previousSummary={previousSummary}
         series={series}
@@ -93,6 +113,7 @@ export default async function DashboardPage() {
         insights={insights}
         cutPotential={cutPotential}
         goalTrajectories={goalTrajectories.slice(0, 3)}
+        consentAlerts={consentAlerts}
         isEmpty={accounts.length === 0 && transactions.length === 0}
       />
     </AppShell>

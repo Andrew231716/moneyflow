@@ -4,6 +4,7 @@ import { MoneyValue } from "./money-value";
 export function StatCard({
   title,
   value,
+  currency = "EUR",
   hint,
   tone,
   trend,
@@ -12,6 +13,7 @@ export function StatCard({
 }: {
   title: string;
   value: number | string;
+  currency?: string;
   hint?: string;
   tone?: "default" | "success" | "danger" | "warning";
   trend?: { label: string; positive?: boolean };
@@ -32,6 +34,7 @@ export function StatCard({
         {typeof value === "number" ? (
           <MoneyValue
             amount={value}
+            currency={currency}
             size={hero ? "hero" : "lg"}
             tone={tone === "danger" ? "danger" : tone === "success" ? "success" : tone === "warning" ? "warning" : "default"}
           />

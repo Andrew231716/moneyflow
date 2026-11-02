@@ -1,7 +1,6 @@
 /** @type {import('next').NextConfig} */
-// PWA webpack plugin (@ducanh2912/next-pwa) hangs on load in this environment.
-// Installability kept via public/manifest.webmanifest + layout metadata/icons.
-// Keep the SW plugin off until Next 15 stability is proven in production.
+// Prefer the free static SW in public/sw.js (registered client-side).
+// The @ducanh2912/next-pwa webpack plugin hangs in some build environments.
 const nextConfig = {
   reactStrictMode: true,
   images: {

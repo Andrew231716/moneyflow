@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { Pencil, Trash2 } from "lucide-react";
 import { Progress } from "@/components/ui/progress";
 import { Button } from "@/components/ui/button";
@@ -17,6 +18,7 @@ export function GoalCard({
   onSettle,
   onEdit,
   onDelete,
+  href,
   className,
   compact,
   showTrajectory = true,
@@ -26,6 +28,7 @@ export function GoalCard({
   onSettle?: (goal: Goal) => void;
   onEdit?: () => void;
   onDelete?: () => void;
+  href?: string;
   className?: string;
   compact?: boolean;
   showTrajectory?: boolean;
@@ -34,8 +37,14 @@ export function GoalCard({
   const reached = isGoalReached(goal);
   const settled = isGoalSettled(goal);
 
-  return (
-    <div className={cn("mf-surface p-4 space-y-3", className)}>
+  const shellClass = cn(
+    "mf-surface p-4 space-y-3 block",
+    href && "transition-colors hover:bg-muted/30",
+    className
+  );
+
+  const body = (
+    <>
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0 space-y-1.5">
           <p className="font-medium truncate">{goal.name}</p>
@@ -85,7 +94,11 @@ export function GoalCard({
               size="sm"
               variant="secondary"
               className="min-h-touch"
-              onClick={() => onAdd(50)}
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                onAdd(50);
+              }}
             >
               +50 €
             </Button>
@@ -95,7 +108,11 @@ export function GoalCard({
               size="sm"
               variant="outline"
               className="min-h-touch"
-              onClick={() => onSettle(goal)}
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                onSettle(goal);
+              }}
             >
               Saldato
             </Button>
@@ -106,7 +123,11 @@ export function GoalCard({
               variant="outline"
               className="min-h-touch"
               aria-label={`Modifica obiettivo ${goal.name}`}
-              onClick={onEdit}
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                onEdit();
+              }}
             >
               <Pencil className="size-3.5" />
               Modifica
@@ -118,7 +139,11 @@ export function GoalCard({
               variant="outline"
               className="min-h-touch text-destructive border-destructive/30"
               aria-label={`Elimina obiettivo ${goal.name}`}
-              onClick={onDelete}
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                onDelete();
+              }}
             >
               <Trash2 className="size-3.5" />
               Elimina
@@ -134,7 +159,11 @@ export function GoalCard({
               variant="outline"
               className="min-h-touch"
               aria-label={`Modifica obiettivo ${goal.name}`}
-              onClick={onEdit}
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                onEdit();
+              }}
             >
               <Pencil className="size-3.5" />
               Modifica
@@ -146,7 +175,11 @@ export function GoalCard({
               variant="outline"
               className="min-h-touch text-destructive border-destructive/30"
               aria-label={`Elimina obiettivo ${goal.name}`}
-              onClick={onDelete}
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                onDelete();
+              }}
             >
               <Trash2 className="size-3.5" />
               Elimina
@@ -159,6 +192,16 @@ export function GoalCard({
           Raggiunto · ancora disponibile fino a Saldato
         </p>
       )}
-    </div>
+    </>
   );
+
+  if (href) {
+    return (
+      <Link href={href} className={shellClass}>
+        {body}
+      </Link>
+    );
+  }
+
+  return <div className={shellClass}>{body}</div>;
 }

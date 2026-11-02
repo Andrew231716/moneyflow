@@ -5,6 +5,7 @@ import {
   bufferToBase64Url,
   clearAppLockConfig,
   isAppLockUnlocked,
+  isValidPin,
   markAppHidden,
   readAppLockConfig,
   setAppLockUnlocked,
@@ -57,6 +58,8 @@ describe("app-lock helpers", () => {
       enabled: true,
       credentialId: "cred-1",
       userId: "user-1",
+      hasPin: false,
+      hasBiometric: true,
     });
     setAppLockUnlocked(true);
     expect(isAppLockUnlocked()).toBe(true);
@@ -65,8 +68,16 @@ describe("app-lock helpers", () => {
       enabled: false,
       credentialId: null,
       userId: null,
+      hasPin: false,
+      hasBiometric: false,
     });
     expect(isAppLockUnlocked()).toBe(false);
+  });
+
+  it("validates PIN shape", () => {
+    expect(isValidPin("1234")).toBe(true);
+    expect(isValidPin("12")).toBe(false);
+    expect(isValidPin("abcdef")).toBe(false);
   });
 
   it("relocks after background threshold", () => {

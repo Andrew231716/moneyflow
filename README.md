@@ -28,6 +28,7 @@ Esegui gli script SQL nel SQL Editor di Supabase **in ordine**:
 4. **`004_debts.sql`** — tabella debiti manuali.
 5. **`005_auto_category.sql`** — classificazione automatica movimenti banca.
 6. **`006_booking_status.sql`** — `booking_status` (movimenti in sospeso / non contabilizzati).
+7. **`007_adjust_account_balance.sql`** — RPC atomica `adjust_account_balance` per aggiornare i saldi senza race.
 
 Non invertire l’ordine: ogni file dipende dai precedenti.
 

@@ -31,6 +31,10 @@ import type { GoalTrajectory } from "@/lib/finance/goal-trajectory";
 import { DemoSeedButton } from "@/features/analytics/demo-seed-button";
 import { DashboardSyncStatus } from "@/features/open-banking/components/dashboard-sync-status";
 import {
+  AppAlerts,
+  type BankConsentAlert,
+} from "@/features/alerts/app-alerts";
+import {
   StatCard,
   MoneyValue,
   BudgetCard,
@@ -49,6 +53,8 @@ import {
 
 export function DashboardView(props: {
   availability: number;
+  availabilityCurrency: string;
+  currencyGroups: { currency: string; total: number }[];
   summary: MonthSummary;
   previousSummary: MonthSummary;
   series: {
@@ -77,6 +83,7 @@ export function DashboardView(props: {
   insights: Insight[];
   cutPotential: CutPotentialResult;
   goalTrajectories: GoalTrajectory[];
+  consentAlerts: BankConsentAlert[];
   isEmpty: boolean;
 }) {
   const {
@@ -97,9 +104,16 @@ export function DashboardView(props: {
     insights,
     cutPotential,
     goalTrajectories,
+    consentAlerts,
+    availabilityCurrency,
+    currencyGroups,
     isEmpty,
   } = props;
-  const savingsBalance = savingsAccounts.reduce((s, a) => s + Number(a.balance), 0);
+  const savingsBalance = savingsAccounts
+    .filter(
+      (a) => (a.currency || "EUR").toUpperCase() === availabilityCurrency
+    )
+    .reduce((s, a) => s + Number(a.balance), 0);
   const liquidBalance = availability - savingsBalance;
   const reservedGoals = goals.filter(
     (g) => g.status !== "cancelled" && !g.settled
@@ -140,24 +154,38 @@ export function DashboardView(props: {
         />
       )}
 
+      <AppAlerts
+        consentAlerts={consentAlerts}
+        budgetProgress={budgetProgress}
+        goals={goals}
+      />
+
       <StatCard
         hero
         title="Disponibilità"
         value={availability}
+        currency={availabilityCurrency}
         hint={
-          reservedGoalsTotal > 0 || savingsBalance > 0
-            ? [
-                `Conti ${formatCurrency(liquidBalance)}`,
-                savingsBalance > 0
-                  ? `Salvadanaio ${formatCurrency(savingsBalance)}`
-                  : null,
-                reservedGoalsTotal > 0
-                  ? `Obiettivi esclusi ${formatCurrency(reservedGoalsTotal)}`
-                  : null,
-              ]
-                .filter(Boolean)
-                .join(" · ")
-            : "Tutti i conti"
+          [
+            currencyGroups.length > 1
+              ? `Solo ${availabilityCurrency} (altre valute separate sotto)`
+              : null,
+            reservedGoalsTotal > 0 || savingsBalance > 0
+              ? [
+                  `Conti ${formatCurrency(liquidBalance, availabilityCurrency)}`,
+                  savingsBalance > 0
+                    ? `Salvadanaio ${formatCurrency(savingsBalance, availabilityCurrency)}`
+                    : null,
+                  reservedGoalsTotal > 0
+                    ? `Obiettivi esclusi ${formatCurrency(reservedGoalsTotal)}`
+                    : null,
+                ]
+                  .filter(Boolean)
+                  .join(" · ")
+              : "Tutti i conti",
+          ]
+            .filter(Boolean)
+            .join(" · ") || "Tutti i conti"
         }
         trend={{
           label:
@@ -167,6 +195,26 @@ export function DashboardView(props: {
           positive: savingsDelta === 0 ? undefined : savingsDeltaPositive,
         }}
       />
+
+      {currencyGroups.length > 1 && (
+        <div className="mf-surface p-4 space-y-2">
+          <p className="text-sm font-medium">Saldi per valuta</p>
+          <p className="text-xs text-muted-foreground">
+            Nessuna conversione FX (gratuita e trasparente): i totali restano separati.
+          </p>
+          <ul className="space-y-1.5">
+            {currencyGroups.map((g) => (
+              <li
+                key={g.currency}
+                className="flex items-center justify-between text-sm"
+              >
+                <span className="text-muted-foreground">{g.currency}</span>
+                <MoneyValue amount={g.total} currency={g.currency} size="sm" />
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       {openDebtsTotal > 0 && (
         <div className="mf-surface px-4 py-3 flex flex-wrap items-center justify-between gap-2 text-sm">
@@ -283,7 +331,7 @@ export function DashboardView(props: {
                 <MoneyValue amount={savingsBalance} size="lg" tone="success" />
                 <div className="grid gap-3 sm:grid-cols-2">
                   {savingsAccounts.slice(0, 3).map((a) => (
-                    <AccountCard key={a.id} account={a} />
+                    <AccountCard key={a.id} account={a} href="/accounts" />
                   ))}
                 </div>
                 <p className="text-[11px] text-muted-foreground leading-relaxed">
@@ -314,7 +362,7 @@ export function DashboardView(props: {
             {highlightGoals.length > 0 ? (
               <div className="space-y-3">
                 {highlightGoals.slice(0, 3).map((g) => (
-                  <GoalCard key={g.id} goal={g} compact />
+                  <GoalCard key={g.id} goal={g} compact href="/goals" />
                 ))}
               </div>
             ) : (
@@ -408,7 +456,12 @@ export function DashboardView(props: {
           ) : (
             <div className="grid gap-3 sm:grid-cols-2">
               {budgetProgress.slice(0, 4).map((b) => (
-                <BudgetCard key={b.budget.id} progress={b} compact />
+                <BudgetCard
+                  key={b.budget.id}
+                  progress={b}
+                  compact
+                  href="/budgets"
+                />
               ))}
             </div>
           )}
@@ -421,7 +474,7 @@ export function DashboardView(props: {
           ) : (
             <div className="space-y-3">
               {activeGoals.slice(0, 3).map((g) => (
-                <GoalCard key={g.id} goal={g} compact />
+                <GoalCard key={g.id} goal={g} compact href="/goals" />
               ))}
             </div>
           )}
