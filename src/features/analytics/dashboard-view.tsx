@@ -30,10 +30,8 @@ import type { CutPotentialResult } from "@/lib/finance/cut-potential";
 import type { GoalTrajectory } from "@/lib/finance/goal-trajectory";
 import { DemoSeedButton } from "@/features/analytics/demo-seed-button";
 import { DashboardSyncStatus } from "@/features/open-banking/components/dashboard-sync-status";
-import {
-  AppAlerts,
-  type BankConsentAlert,
-} from "@/features/alerts/app-alerts";
+import { AppAlerts } from "@/features/alerts/app-alerts";
+import type { BankConsentAlert } from "@/features/alerts/build-consent-alerts";
 import {
   StatCard,
   MoneyValue,

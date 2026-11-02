@@ -132,8 +132,9 @@ export async function fetchDebts(): Promise<Debt[]> {
     .select("*")
     .order("created_at", { ascending: false });
   if (error) {
+    // Table may be missing until migration 004 is applied — don't crash Home.
     console.error("fetchDebts", error.message);
-    throw new Error("Impossibile caricare i debiti.");
+    return [];
   }
   return (data as Debt[]) ?? [];
 }
