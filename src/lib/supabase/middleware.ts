@@ -52,11 +52,16 @@ export async function updateSession(request: NextRequest) {
     pathname === "/manifest.webmanifest" ||
     pathname === "/favicon.ico" ||
     pathname === "/favicon.svg" ||
-    pathname.startsWith("/api/open-banking/callback");
+    pathname.startsWith("/api/open-banking/callback") ||
+    // Cron authenticates with CRON_SECRET inside the route (no Supabase session).
+    pathname.startsWith("/api/cron/");
 
   if (!user && !isPublic) {
     if (pathname.startsWith("/api/")) {
-      const response = NextResponse.json({ error: "Devi accedere per usare Open Banking." }, { status: 401 });
+      const response = NextResponse.json(
+        { error: "Devi accedere per continuare." },
+        { status: 401 }
+      );
       supabaseResponse.cookies.getAll().forEach(c => response.cookies.set(c));
       return response;
     }

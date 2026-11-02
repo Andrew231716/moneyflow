@@ -899,11 +899,24 @@ describe("resolveSyncDateFrom", () => {
   });
 
   it("does not skip history when last_synced is ahead of last tx", () => {
-    const d = resolveSyncDateFrom("2026-09-20T12:00:00.000Z", "2026-09-20T12:00:00.000Z", {
-      lastTransactionDate: "2026-08-03",
-      overlapDays: 2,
-    });
-    expect(d.toISOString().slice(0, 10)).toBe("2026-08-01");
+    // Keep dates inside the rolling 90-day AIS floor so the assertion is not
+    // calendar-flaky (absolute Aug dates fall outside the window in late year).
+    const now = new Date();
+    const lastTx = new Date(now);
+    lastTx.setDate(lastTx.getDate() - 40);
+    const lastSynced = new Date(now);
+    lastSynced.setDate(lastSynced.getDate() - 5);
+    const d = resolveSyncDateFrom(
+      lastSynced.toISOString(),
+      lastSynced.toISOString(),
+      {
+        lastTransactionDate: lastTx.toISOString().slice(0, 10),
+        overlapDays: 2,
+      }
+    );
+    const expected = new Date(lastTx);
+    expected.setDate(expected.getDate() - 2);
+    expect(d.toISOString().slice(0, 10)).toBe(expected.toISOString().slice(0, 10));
   });
 
   it("caps manual lookback to maxLookbackDays", () => {

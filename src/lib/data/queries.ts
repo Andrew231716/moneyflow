@@ -23,17 +23,25 @@ export async function fetchAccounts(includeArchived = false): Promise<Account[]>
   const supabase = await createClient();
   let q = supabase.from("accounts").select("*").order("name");
   if (!includeArchived) q = q.eq("is_archived", false);
-  const { data } = await q;
+  const { data, error } = await q;
+  if (error) {
+    console.error("fetchAccounts", error.message);
+    throw new Error("Impossibile caricare i conti.");
+  }
   return (data as Account[]) ?? [];
 }
 
 export async function fetchCategories(): Promise<Category[]> {
   const supabase = await createClient();
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from("categories")
     .select("*")
     .order("type")
     .order("name");
+  if (error) {
+    console.error("fetchCategories", error.message);
+    throw new Error("Impossibile caricare le categorie.");
+  }
   return (data as Category[]) ?? [];
 }
 
@@ -93,28 +101,40 @@ export async function fetchTransactions(monthsBack = 12): Promise<Transaction[]>
 export async function fetchBudgets(month?: Date): Promise<Budget[]> {
   const supabase = await createClient();
   const m = format(startOfMonth(month ?? new Date()), "yyyy-MM-dd");
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from("budgets")
     .select("*, category:categories(*)")
     .eq("month", m);
+  if (error) {
+    console.error("fetchBudgets", error.message);
+    throw new Error("Impossibile caricare i budget.");
+  }
   return (data as Budget[]) ?? [];
 }
 
 export async function fetchGoals(): Promise<Goal[]> {
   const supabase = await createClient();
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from("goals")
     .select("*")
     .order("created_at", { ascending: false });
+  if (error) {
+    console.error("fetchGoals", error.message);
+    throw new Error("Impossibile caricare gli obiettivi.");
+  }
   return (data as Goal[]) ?? [];
 }
 
 export async function fetchDebts(): Promise<Debt[]> {
   const supabase = await createClient();
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from("debts")
     .select("*")
     .order("created_at", { ascending: false });
+  if (error) {
+    console.error("fetchDebts", error.message);
+    throw new Error("Impossibile caricare i debiti.");
+  }
   return (data as Debt[]) ?? [];
 }
 
@@ -152,9 +172,13 @@ export async function fetchRecurring(): Promise<RecurringTransaction[]> {
 
 export async function fetchRules(): Promise<ClassificationRule[]> {
   const supabase = await createClient();
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from("classification_rules")
     .select("*, category:categories(*)")
     .order("priority", { ascending: false });
+  if (error) {
+    console.error("fetchRules", error.message);
+    throw new Error("Impossibile caricare le regole di classificazione.");
+  }
   return (data as ClassificationRule[]) ?? [];
 }
