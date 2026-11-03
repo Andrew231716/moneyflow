@@ -3,8 +3,10 @@ import {
   findIntesaSanpaolo,
   isIntesaSanpaolo,
   isRevolut,
+  mergeRevolutFromExtraCountries,
   normalizeInstitutionName,
   prioritizeInstitutions,
+  prioritizeRevolutSearch,
 } from "../institutions";
 import type { Institution } from "../types";
 
@@ -60,5 +62,30 @@ describe("Intesa discovery (no hardcoded institution_id)", () => {
     expect(sorted).toHaveLength(2);
     expect(sorted.every((i) => !i.isSuggested)).toBe(true);
     expect(findIntesaSanpaolo(list)).toBeNull();
+  });
+
+  it("merges LT Revolut into IT catalog without duplicating ids", () => {
+    const itList: Institution[] = [
+      { id: "IT::UniCredit", name: "UniCredit", countries: ["IT"] },
+    ];
+    const ltList: Institution[] = [
+      { id: "LT::Revolut", name: "Revolut", countries: ["LT"] },
+      { id: "LT::Swedbank", name: "Swedbank", countries: ["LT"] },
+      { id: "IT::UniCredit", name: "UniCredit", countries: ["IT"] },
+    ];
+    const merged = mergeRevolutFromExtraCountries(itList, ltList);
+    expect(merged.map((i) => i.id).sort()).toEqual([
+      "IT::UniCredit",
+      "LT::Revolut",
+    ]);
+  });
+
+  it("prioritizes Revolut when searching for it", () => {
+    const list: Institution[] = [
+      { id: "IT::Alpha", name: "Alpha Bank", countries: ["IT"] },
+      { id: "LT::Revolut", name: "Revolut Bank UAB", countries: ["LT"] },
+    ];
+    const sorted = prioritizeRevolutSearch(list, "revolut");
+    expect(sorted[0].id).toBe("LT::Revolut");
   });
 });

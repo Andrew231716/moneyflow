@@ -21,6 +21,7 @@ const STATUS_MESSAGES: Record<string, string> = {
 export default function ConnectBankClient() {
   const searchParams = useSearchParams();
   const status = searchParams.get("status");
+  const detail = searchParams.get("detail");
 
   const [query, setQuery] = useState("");
   const [institutions, setInstitutions] = useState<Institution[]>([]);
@@ -65,6 +66,10 @@ export default function ConnectBankClient() {
 
   const statusMessage = status ? STATUS_MESSAGES[status] : null;
   const list = useMemo(() => institutions, [institutions]);
+  const showRevolutTip =
+    /revolut/i.test(query) ||
+    institutions.some((i) => /revolut/i.test(i.name)) ||
+    /revolut/i.test(detail ?? "");
 
   async function connect(inst: Institution) {
     setConnectingId(inst.id);
@@ -101,22 +106,29 @@ export default function ConnectBankClient() {
           credenziali bancarie. L&apos;autorizzazione avviene sul sito sicuro
           della banca.
         </p>
-        <p className="text-xs text-muted-foreground">Paese: Italia (IT)</p>
-        {/revolut/i.test(query) && (
-          <p className="text-xs text-muted-foreground rounded-xl border border-border/70 bg-muted/40 px-3 py-2">
-            Per Revolut: completa l&apos;autorizzazione nell&apos;app mobile, seleziona il
-            conto EUR, poi da Conti premi <strong>Sincronizza</strong> subito dopo il
-            ritorno in MoneyFlow.
+        <p className="text-xs text-muted-foreground">
+          Paese: Italia (IT) · Revolut viene cercata anche in Lituania (LT)
+        </p>
+        {showRevolutTip && (
+          <p className="text-xs text-muted-foreground rounded-xl border border-border/70 bg-muted/40 px-3 py-2 leading-relaxed">
+            <strong className="text-foreground">Revolut:</strong> resta
+            connesso a MoneyFlow, completa l&apos;autorizzazione nell&apos;app
+            mobile, seleziona il <strong>conto EUR</strong> (e le carte se ti
+            servono), poi torna qui e da Conti premi{" "}
+            <strong>Sincronizza</strong> subito.
           </p>
         )}
       </div>
 
       {statusMessage && (
         <div
-          className="rounded-xl border border-warning/30 bg-warning/10 px-3 py-2.5 text-sm text-foreground"
+          className="rounded-xl border border-warning/30 bg-warning/10 px-3 py-2.5 text-sm text-foreground space-y-1"
           role="status"
         >
-          {statusMessage}
+          <p>{statusMessage}</p>
+          {detail && (
+            <p className="text-xs text-muted-foreground break-words">{detail}</p>
+          )}
         </div>
       )}
 
@@ -220,11 +232,11 @@ function InstitutionRow({
       </div>
       <div className="min-w-0 flex-1">
         <p className="truncate font-medium">{institution.name}</p>
-        {institution.bic && (
-          <p className="truncate text-xs text-muted-foreground">
-            {institution.bic}
-          </p>
-        )}
+        <p className="truncate text-xs text-muted-foreground">
+          {[institution.bic, institution.countries?.[0]]
+            .filter(Boolean)
+            .join(" · ")}
+        </p>
       </div>
       <Button
         size="sm"
