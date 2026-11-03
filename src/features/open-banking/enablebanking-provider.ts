@@ -405,9 +405,30 @@ export class EnableBankingProvider implements OpenBankingProvider {
     const aspsps = await ebFetch<{ aspsps: EbAspsp[] }>(
       `/aspsps?country=${encodeURIComponent(country)}`
     );
-    const aspsp = (aspsps.aspsps ?? []).find(
-      (a) => a.name === name && (a.country || country).toUpperCase() === country
-    );
+    const normalizedTarget = name
+      .normalize("NFD")
+      .replace(/\p{M}/gu, "")
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "");
+    const aspsp =
+      (aspsps.aspsps ?? []).find(
+        (a) =>
+          a.name === name &&
+          (a.country || country).toUpperCase() === country
+      ) ??
+      (aspsps.aspsps ?? []).find((a) => {
+        const n = (a.name ?? "")
+          .normalize("NFD")
+          .replace(/\p{M}/gu, "")
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, "");
+        return (
+          n === normalizedTarget &&
+          (a.country || country).toUpperCase() === country
+        );
+      });
+    const aspspName = aspsp?.name ?? name;
+    const aspspCountry = (aspsp?.country || country).toUpperCase();
     const validUntil = consentValidUntilIso(aspsp?.maximum_consent_validity);
 
     const data = await ebFetch<EbAuthResponse>("/auth", {
@@ -418,7 +439,7 @@ export class EnableBankingProvider implements OpenBankingProvider {
           transactions: true,
           valid_until: validUntil,
         },
-        aspsp: { name, country },
+        aspsp: { name: aspspName, country: aspspCountry },
         state: params.reference,
         redirect_url: params.redirectUrl,
         psu_type: "personal",

@@ -13,7 +13,12 @@ import type {
   ProviderBalance,
   SyncResult,
 } from "./types";
-import { isRevolut, prioritizeInstitutions } from "./institutions";
+import {
+  isRevolut,
+  mergeRevolutFromExtraCountries,
+  prioritizeInstitutions,
+  prioritizeRevolutSearch,
+} from "./institutions";
 import {
   IncompleteTransactionsError,
   OpenBankingConfigError,
@@ -150,7 +155,16 @@ export async function listInstitutions(options: {
   const provider = getOpenBankingProvider(options.providerId ?? resolveDefaultProviderId());
   const country = (options.country ?? "IT").toUpperCase();
   const institutions = await provider.getInstitutions(country);
-  return prioritizeInstitutions(institutions, options.search);
+
+  // Revolut Bank UAB is typically listed under LT, not IT — merge it in for IT users.
+  let merged = institutions;
+  if (country === "IT") {
+    const lt = await provider.getInstitutions("LT").catch(() => [] as Institution[]);
+    merged = mergeRevolutFromExtraCountries(institutions, lt);
+  }
+
+  const prioritized = prioritizeInstitutions(merged, options.search);
+  return prioritizeRevolutSearch(prioritized, options.search);
 }
 
 export async function startBankConnection(options: {
@@ -243,6 +257,18 @@ export async function handleConnectionCallback(options: {
       throw new Error("Impossibile salvare la sessione bancaria.");
     }
     connection = sessionRow as BankConnectionRow;
+
+    if (completed.accounts.length === 0) {
+      const tip = isRevolut(connection.institution_name)
+        ? "Revolut non ha condiviso nessun conto. Nell'app Revolut autorizza il conto EUR (e le carte se ti servono), poi ricollega da Conti."
+        : "La banca non ha condiviso nessun conto. Riprova e seleziona almeno un conto nell'autorizzazione.";
+      await options.supabase
+        .from("bank_connections")
+        .update({ status: "error", error_message: tip })
+        .eq("id", connection.id)
+        .eq("user_id", options.userId);
+      throw new OpenBankingHttpError(tip, 400);
+    }
 
     for (const pa of completed.accounts) {
       await upsertBankAccountAndMoneyFlowAccount({

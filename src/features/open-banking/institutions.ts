@@ -60,3 +60,33 @@ export function findIntesaSanpaolo(
 ): Institution | null {
   return institutions.find((i) => isIntesaSanpaolo(i.name)) ?? null;
 }
+
+/**
+ * Italian UI lists IT ASPSPs, but Revolut is often published under LT (Bank UAB).
+ * Merge LT Revolut entries so users can find and connect them from the IT screen.
+ */
+export function mergeRevolutFromExtraCountries(
+  primary: Institution[],
+  extras: Institution[]
+): Institution[] {
+  const byId = new Map(primary.map((i) => [i.id, i] as const));
+  for (const inst of extras) {
+    if (!isRevolut(inst.name)) continue;
+    if (!byId.has(inst.id)) byId.set(inst.id, inst);
+  }
+  return Array.from(byId.values());
+}
+
+/** Prefer Revolut hits when the user is clearly searching for it. */
+export function prioritizeRevolutSearch(
+  institutions: Institution[],
+  searchQuery?: string
+): Institution[] {
+  if (!/revolut/i.test(searchQuery ?? "")) return institutions;
+  return [...institutions].sort((a, b) => {
+    const ar = isRevolut(a.name) ? 0 : 1;
+    const br = isRevolut(b.name) ? 0 : 1;
+    if (ar !== br) return ar - br;
+    return a.name.localeCompare(b.name, "it");
+  });
+}

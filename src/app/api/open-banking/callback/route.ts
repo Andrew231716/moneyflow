@@ -7,6 +7,15 @@ import { handleConnectionCallback } from "@/features/open-banking/service";
 
 export const dynamic = "force-dynamic";
 
+function connectBankErrorRedirect(appOrigin: string, detail?: string) {
+  const url = new URL("/accounts/connect-bank", appOrigin);
+  url.searchParams.set("status", "error");
+  if (detail?.trim()) {
+    url.searchParams.set("detail", detail.trim().slice(0, 240));
+  }
+  return NextResponse.redirect(url);
+}
+
 /**
  * GET /api/open-banking/callback
  * GoCardless: ref / requisition id
@@ -24,14 +33,17 @@ export async function GET(request: NextRequest) {
 
     const providerError = searchParams.get("error");
     if (providerError) {
+      const description = searchParams.get("error_description") ?? "";
       const reason =
         /denied|cancel|rejected/i.test(providerError) ||
-        /denied|cancel|rejected/i.test(searchParams.get("error_description") ?? "")
+        /denied|cancel|rejected/i.test(description)
           ? "rejected"
           : "error";
-      return NextResponse.redirect(
-        new URL(`/accounts/connect-bank?status=${reason}`, appOrigin)
-      );
+      const url = new URL(`/accounts/connect-bank?status=${reason}`, appOrigin);
+      if (description.trim()) {
+        url.searchParams.set("detail", description.trim().slice(0, 240));
+      }
+      return NextResponse.redirect(url);
     }
 
     const code = searchParams.get("code");
@@ -76,18 +88,24 @@ export async function GET(request: NextRequest) {
               ? "error"
               : "pending";
 
-    return NextResponse.redirect(
-      new URL(`/accounts/connect-bank?status=${reason}`, appOrigin)
-    );
+    const url = new URL(`/accounts/connect-bank?status=${reason}`, appOrigin);
+    if (connection.error_message) {
+      url.searchParams.set("detail", connection.error_message.slice(0, 240));
+    }
+    return NextResponse.redirect(url);
   } catch (error) {
     if (error instanceof OpenBankingHttpError && error.status === 401) {
       return NextResponse.redirect(
-        new URL(`/login?redirect=${encodeURIComponent(request.nextUrl.pathname + request.nextUrl.search)}`, appOrigin)
+        new URL(
+          `/login?redirect=${encodeURIComponent(request.nextUrl.pathname + request.nextUrl.search)}`,
+          appOrigin
+        )
       );
     }
-    // Soft-fail to connect page with generic Italian message
-    return NextResponse.redirect(
-      new URL("/accounts/connect-bank?status=error", appOrigin)
-    );
+    const detail =
+      error instanceof Error
+        ? error.message
+        : "Si è verificato un errore durante il collegamento.";
+    return connectBankErrorRedirect(appOrigin, detail);
   }
 }
