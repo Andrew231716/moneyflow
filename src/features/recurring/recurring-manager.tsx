@@ -9,6 +9,7 @@ import type {
   Category,
   RecurringFrequency,
   RecurringTransaction,
+  Transaction,
 } from "@/types/database";
 import { createClient } from "@/lib/supabase/client";
 import { calcRecurringTotals } from "@/lib/finance/engine";
@@ -30,6 +31,7 @@ import {
   AmountInput,
   ResponsiveFormShell,
 } from "@/components/money";
+import { RecurringSuggestions } from "@/features/recurring/recurring-suggestions";
 
 const freqLabels: Record<RecurringFrequency, string> = {
   weekly: "Settimanale",
@@ -103,10 +105,12 @@ export function RecurringManager({
   items,
   accounts,
   categories: initialCategories,
+  transactions = [],
 }: {
   items: RecurringTransaction[];
   accounts: Account[];
   categories: Category[];
+  transactions?: Transaction[];
 }) {
   const router = useRouter();
   const totals = calcRecurringTotals(items);
@@ -358,6 +362,13 @@ export function RecurringManager({
           mese e per ricordarti le uscite/entrate fisse.
         </p>
       </div>
+
+      <RecurringSuggestions
+        transactions={transactions}
+        existing={items}
+        accounts={accounts}
+        categories={categories}
+      />
 
       {items.length === 0 ? (
         <EmptyState
