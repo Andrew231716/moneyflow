@@ -36,7 +36,9 @@ export function TransactionItem({
           <div className="flex flex-wrap items-center gap-1.5">
             <p className="truncate text-sm font-medium">{tx.description || "—"}</p>
             {pending && (
-              <StatusBadge tone="warning">Non contabilizzato</StatusBadge>
+              <StatusBadge tone="warning" className="shrink-0">
+                Non contabilizzato
+              </StatusBadge>
             )}
           </div>
           <p className="text-xs text-muted-foreground truncate">{meta}</p>

@@ -15,6 +15,7 @@ import {
 import { classifyDescription } from "@/lib/finance/classification";
 import type { ClassificationRule } from "@/types/database";
 import { addManualOverrides } from "@/features/open-banking/deduplication";
+import { SyncBankButton } from "@/features/open-banking/components/sync-bank-button";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -44,6 +45,11 @@ import {
   ResponsiveFormShell,
   MoneyValue,
 } from "@/components/money";
+import { cn } from "@/lib/utils";
+
+function isPendingTx(tx: Transaction): boolean {
+  return (tx.booking_status ?? "booked") === "pending";
+}
 
 export function TransactionsManager({
   transactions,
@@ -90,21 +96,20 @@ export function TransactionsManager({
       setCategoryFilter(cat);
       setFilter("expense");
     }
+    if (searchParams.get("filter") === "pending") {
+      setFilter("pending");
+    }
   }, [searchParams, router]);
 
   const pendingCount = useMemo(
-    () =>
-      transactions.filter((t) => (t.booking_status ?? "booked") === "pending")
-        .length,
+    () => transactions.filter(isPendingTx).length,
     [transactions]
   );
 
   const filtered = useMemo(() => {
     let list = transactions;
     if (filter === "pending") {
-      list = transactions.filter(
-        (t) => (t.booking_status ?? "booked") === "pending"
-      );
+      list = transactions.filter(isPendingTx);
     } else if (filter !== "all") {
       list = transactions.filter((t) => t.type === filter);
     }
@@ -114,6 +119,15 @@ export function TransactionsManager({
           ? !t.category_id
           : t.category_id === categoryFilter
       );
+    }
+    // In Tutti / type filters, surface non contabilizzati first so they are findable.
+    if (filter !== "pending") {
+      list = [...list].sort((a, b) => {
+        const ap = isPendingTx(a) ? 0 : 1;
+        const bp = isPendingTx(b) ? 0 : 1;
+        if (ap !== bp) return ap - bp;
+        return b.date.localeCompare(a.date);
+      });
     }
     return list;
   }, [transactions, filter, categoryFilter]);
@@ -277,13 +291,16 @@ export function TransactionsManager({
     }
   }
 
+  const pendingEmptyCopy =
+    "Qui compaiono i movimenti che Intesa non ha ancora contabilizzato (badge arancione). Se la lista è vuota, sincronizza ora — resti su Movimenti.";
+
   return (
     <div className="space-y-5">
       <PageHeader
         title="Movimenti"
         description={
           pendingCount > 0
-            ? `Tocca per modificare · ${pendingCount} non contabilizzat${pendingCount === 1 ? "o" : "i"}`
+            ? `Tocca per modificare · ${pendingCount} non contabilizzat${pendingCount === 1 ? "o" : "i"} in cima alla lista`
             : "Tocca un movimento per cambiare nome o categoria"
         }
         actions={
@@ -304,26 +321,86 @@ export function TransactionsManager({
 
       <TransferSuggestions transactions={transactions} />
 
-      <Tabs
-        value={filter}
-        onValueChange={(v) => {
-          setFilter(v as typeof filter);
-          setCategoryFilter(null);
-          if (searchParams.get("category")) {
-            router.replace("/transactions", { scroll: false });
-          }
-        }}
-      >
-        <TabsList className="w-full sm:w-auto flex-wrap h-auto">
-          <TabsTrigger value="all" className="min-h-10">Tutti</TabsTrigger>
-          <TabsTrigger value="expense" className="min-h-10">Uscite</TabsTrigger>
-          <TabsTrigger value="income" className="min-h-10">Entrate</TabsTrigger>
-          <TabsTrigger value="transfer" className="min-h-10">Trasferimenti</TabsTrigger>
-          <TabsTrigger value="pending" className="min-h-10">
-            In sospeso{pendingCount > 0 ? ` (${pendingCount})` : ""}
-          </TabsTrigger>
-        </TabsList>
-      </Tabs>
+      <div className="space-y-2">
+        <Tabs
+          value={filter === "pending" ? "__none__" : filter}
+          onValueChange={(v) => {
+            setFilter(v as typeof filter);
+            setCategoryFilter(null);
+            if (searchParams.get("category") || searchParams.get("filter")) {
+              router.replace("/transactions", { scroll: false });
+            }
+          }}
+        >
+          <TabsList className="w-full sm:w-auto grid grid-cols-4 sm:inline-flex h-auto">
+            <TabsTrigger value="all" className="min-h-10">
+              Tutti
+            </TabsTrigger>
+            <TabsTrigger value="expense" className="min-h-10">
+              Uscite
+            </TabsTrigger>
+            <TabsTrigger value="income" className="min-h-10">
+              Entrate
+            </TabsTrigger>
+            <TabsTrigger value="transfer" className="min-h-10">
+              Trasferimenti
+            </TabsTrigger>
+          </TabsList>
+        </Tabs>
+
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            type="button"
+            size="sm"
+            variant={filter === "pending" ? "default" : "outline"}
+            className={cn(
+              "min-h-10 rounded-md",
+              filter === "pending" &&
+                "bg-amber-600 hover:bg-amber-600/90 text-white",
+              filter !== "pending" &&
+                pendingCount > 0 &&
+                "border-amber-500/50 text-amber-800 dark:text-amber-200"
+            )}
+            onClick={() => {
+              setFilter("pending");
+              setCategoryFilter(null);
+              if (searchParams.get("category")) {
+                router.replace("/transactions", { scroll: false });
+              }
+            }}
+          >
+            Non contabilizzati
+            {pendingCount > 0 ? ` (${pendingCount})` : ""}
+          </Button>
+          {filter === "pending" && (
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              className="min-h-10"
+              onClick={() => setFilter("all")}
+            >
+              Mostra tutti
+            </Button>
+          )}
+        </div>
+      </div>
+
+      {filter !== "pending" && pendingCount > 0 && (
+        <button
+          type="button"
+          onClick={() => setFilter("pending")}
+          className="w-full text-left rounded-xl border border-amber-500/30 bg-amber-50/80 dark:bg-amber-950/30 px-3 py-2.5 text-sm"
+        >
+          <span className="font-medium text-amber-900 dark:text-amber-100">
+            {pendingCount} non contabilizzat{pendingCount === 1 ? "o" : "i"}
+          </span>
+          <span className="text-muted-foreground">
+            {" "}
+            · in cima alla lista oppure tocca per filtrarli
+          </span>
+        </button>
+      )}
 
       {categoryFilter && (
         <div className="flex flex-wrap items-center gap-2 text-sm">
@@ -362,7 +439,10 @@ export function TransactionsManager({
             {filtered.map((tx) => (
               <TableRow
                 key={tx.id}
-                className={tx.type !== "transfer" ? "cursor-pointer" : undefined}
+                className={cn(
+                  tx.type !== "transfer" ? "cursor-pointer" : undefined,
+                  isPendingTx(tx) && "bg-amber-50/60 dark:bg-amber-950/20"
+                )}
                 onClick={() => {
                   if (tx.type !== "transfer") openEdit(tx);
                 }}
@@ -374,7 +454,7 @@ export function TransactionsManager({
                       <ArrowLeftRight className="h-3.5 w-3.5 text-muted-foreground" />
                     )}
                     <span>{tx.description || "—"}</span>
-                    {(tx.booking_status ?? "booked") === "pending" && (
+                    {isPendingTx(tx) && (
                       <Badge variant="secondary">Non contabilizzato</Badge>
                     )}
                   </div>
@@ -404,14 +484,16 @@ export function TransactionsManager({
             title="Nessun movimento"
             description={
               filter === "pending"
-                ? "Dopo una sync, qui compaiono i movimenti che la banca non ha ancora contabilizzato. Se la lista è vuota, Intesa non ha inviato pending in questo momento."
-                : "Prova a cambiare filtro, sincronizza la banca da Conti, oppure aggiungi un movimento."
+                ? pendingEmptyCopy
+                : "Prova a cambiare filtro, sincronizza la banca, oppure aggiungi un movimento."
             }
             action={
               <div className="flex flex-wrap justify-center gap-2">
-                <Button asChild size="sm" variant="outline">
-                  <Link href="/accounts">Vai ai Conti / Sync</Link>
-                </Button>
+                <SyncBankButton
+                  onSynced={() => {
+                    if (filter === "pending") setFilter("pending");
+                  }}
+                />
                 <Button size="sm" onClick={() => setOpen(true)}>
                   Nuovo movimento
                 </Button>
@@ -435,14 +517,16 @@ export function TransactionsManager({
             title="Nessun movimento"
             description={
               filter === "pending"
-                ? "Nessun pending dalla banca in questo momento. Riprova dopo una sync."
+                ? pendingEmptyCopy
                 : "Sincronizza la banca o aggiungi la prima spesa."
             }
             action={
               <div className="flex flex-wrap justify-center gap-2">
-                <Button asChild size="sm" variant="outline">
-                  <Link href="/accounts">Sync banca</Link>
-                </Button>
+                <SyncBankButton
+                  onSynced={() => {
+                    setFilter("pending");
+                  }}
+                />
                 <Button size="sm" onClick={() => setOpen(true)}>
                   Nuovo
                 </Button>
@@ -611,6 +695,7 @@ export function TransactionsManager({
         {editing && (
           <p className="text-xs text-muted-foreground">
             {editing.date} · {formatAmountHint(editing)}
+            {isPendingTx(editing) ? " · Non contabilizzato" : null}
             {editing.source === "bank"
               ? " · Le modifiche restano anche dopo la sync banca"
               : null}
