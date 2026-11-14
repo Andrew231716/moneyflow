@@ -179,6 +179,7 @@ export interface Goal {
 
 /** Manual liability — not part of disponibilità; shown separately as Debiti da saldare. */
 export interface Debt {
+  due_date?: string | null;
   id: string;
   user_id: string;
   name: string;

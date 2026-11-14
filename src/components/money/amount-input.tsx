@@ -13,6 +13,7 @@ export function AmountInput({
   onChange,
   className,
   inputClassName,
+  autoFocus = false,
 }: {
   id?: string;
   label?: string;
@@ -21,6 +22,7 @@ export function AmountInput({
   onChange: (value: string) => void;
   className?: string;
   inputClassName?: string;
+  autoFocus?: boolean;
 }) {
   return (
     <div className={cn("space-y-2", className)}>
@@ -36,6 +38,7 @@ export function AmountInput({
           onChange={(e) => onChange(e.target.value)}
           type="text"
           inputMode="decimal"
+          autoFocus={autoFocus}
           pattern="[0-9]*[.,]?[0-9]*"
           placeholder="0,00"
           autoComplete="off"

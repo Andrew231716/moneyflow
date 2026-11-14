@@ -1,5 +1,7 @@
 "use client";
 
+import { format } from "date-fns";
+
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -69,13 +71,55 @@ export function TransactionsManager({
     account_id: accounts[0]?.id ?? "",
     transfer_account_id: accounts[1]?.id ?? "",
     category_id: "",
-    date: new Date().toISOString().slice(0, 10),
+    date: format(new Date(), "yyyy-MM-dd"),
   });
   const [editForm, setEditForm] = useState({
     description: "",
     category_id: "",
   });
   const [saving, setSaving] = useState(false);
+  const [split, setSplit] = useState({ amount: "", category: "" });
+  const [bulkCategory, setBulkCategory] = useState("");
+
+  async function changeVisibleCategories() {
+    const category = categories.find((item) => item.id === bulkCategory);
+    const targets = filtered.filter((item) => item.type === category?.type && item.category_id !== category.id);
+    if (!category || !targets.length || saving || !window.confirm(`Applico «${category.name}» a ${targets.length} movimenti visibili?`)) return;
+    setSaving(true);
+    const supabase = createClient();
+    try {
+      const { error } = await supabase.from("transactions")
+        .update({ category_id: category.id, category_source: "manual", manual_category_override: true })
+        .in("id", targets.map((item) => item.id));
+      if (error) throw error;
+      toast.success(`Aggiornati ${targets.length} movimenti`, {
+        action: {
+          label: "Annulla",
+          onClick: async () => {
+            const results = await Promise.all(targets.map((item) => supabase.from("transactions")
+              .update({ category_id: item.category_id, category_source: item.category_source,
+                manual_category_override: item.manual_category_override })
+              .eq("id", item.id).eq("category_id", category.id)));
+            if (results.some((result) => result.error)) toast.error("Alcune categorie non sono state ripristinate.");
+            else toast.success("Categorie ripristinate");
+            router.refresh();
+          },
+        },
+      });
+      router.refresh();
+    } catch {
+      toast.error("Impossibile aggiornare le categorie.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  useEffect(() => {
+    const lastAccount = localStorage.getItem("mf:last-movement-account");
+    if (lastAccount && accounts.some((account) => account.id === lastAccount)) {
+      setForm((current) => ({ ...current, account_id: lastAccount }));
+    }
+  }, [accounts]);
 
   useEffect(() => {
     const neu = searchParams.get("new");
@@ -86,6 +130,7 @@ export function TransactionsManager({
       return;
     }
     const cat = searchParams.get("category");
+    if (searchParams.get("pending") === "1") setFilter("pending");
     if (cat) {
       setCategoryFilter(cat);
       setFilter("expense");
@@ -115,8 +160,9 @@ export function TransactionsManager({
           : t.category_id === categoryFilter
       );
     }
-    return list;
-  }, [transactions, filter, categoryFilter]);
+    const month = searchParams.get("month");
+    return month ? list.filter((item) => item.date.startsWith(`${month}-`)) : list;
+  }, [transactions, filter, categoryFilter, searchParams]);
 
   function openEdit(tx: Transaction) {
     if (tx.type === "transfer") {
@@ -226,6 +272,18 @@ export function TransactionsManager({
           action: "transfer",
           after_data: { amount, from: form.account_id, to: form.transfer_account_id },
         });
+      } else if (txType === "expense" && (split.amount || split.category)) {
+        const second = Number(split.amount.replace(",", "."));
+        const first = Math.round((amount - second) * 100) / 100;
+        if (!form.category_id || !split.category || first <= 0 || second <= 0
+          || !Number.isFinite(second) || !Number.isFinite(first)) {
+          throw new Error("Scegli due categorie e una seconda quota inferiore al totale.");
+        }
+        const { error } = await supabase.rpc("create_expense_split", {
+          p_account: form.account_id, p_date: form.date, p_description: form.description,
+          p_parts: [{ amount: first, category_id: form.category_id }, { amount: second, category_id: split.category }],
+        });
+        if (error) throw new Error(error.message);
       } else {
         let categoryId = form.category_id || null;
         let categorySource: "manual" | "rule" = form.category_id ? "manual" : "rule";
@@ -268,7 +326,9 @@ export function TransactionsManager({
 
       toast.success("Movimento salvato");
       setOpen(false);
+      setSplit({ amount: "", category: "" });
       setForm({ ...form, amount: "", description: "" });
+      localStorage.setItem("mf:last-movement-account", form.account_id);
       router.refresh();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Errore");
@@ -325,6 +385,20 @@ export function TransactionsManager({
         </TabsList>
       </Tabs>
 
+      <div className="flex flex-wrap gap-2">
+        <Button size="sm" variant={categoryFilter === "uncategorized" ? "default" : "outline"}
+          onClick={() => { setCategoryFilter("uncategorized"); setFilter("all"); }}>
+          Senza categoria
+        </Button>
+        {(categoryFilter || filter !== "all") && (
+          <Button size="sm" variant="ghost" onClick={() => {
+            setCategoryFilter(null);
+            setFilter("all");
+            router.replace("/transactions", { scroll: false });
+          }}>Azzera filtri</Button>
+        )}
+      </div>
+
       {categoryFilter && (
         <div className="flex flex-wrap items-center gap-2 text-sm">
           <Badge variant="secondary">
@@ -345,6 +419,19 @@ export function TransactionsManager({
             Rimuovi filtro
           </Button>
         </div>
+      )}
+      {(categoryFilter || filter === "expense" || filter === "income") && filtered.length > 1 && (
+        <details className="mf-surface p-3">
+          <summary className="text-sm font-medium">Cambia categoria ai risultati filtrati</summary>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <select aria-label="Categoria da applicare" className="rounded border bg-background p-2"
+              value={bulkCategory} onChange={(event) => setBulkCategory(event.target.value)}>
+              <option value="">Scegli categoria</option>
+              {categories.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+            </select>
+            <Button disabled={!bulkCategory || saving} onClick={() => void changeVisibleCategories()}>Applica</Button>
+          </div>
+        </details>
       )}
 
       <div className="hidden md:block mf-surface overflow-hidden">
@@ -471,18 +558,37 @@ export function TransactionsManager({
         </Tabs>
 
         <AmountInput
+          autoFocus
           value={form.amount}
           onChange={(amount) => setForm({ ...form, amount })}
         />
+        {txType === "expense" && (
+          <details className="rounded-lg border p-3">
+            <summary>Dividi tra due categorie</summary>
+            <div className="mt-3 space-y-2">
+              <p className="text-sm text-muted-foreground">La parte restante va alla categoria principale.</p>
+              <Input aria-label="Importo seconda quota" inputMode="decimal" placeholder="Seconda quota" value={split.amount}
+                onChange={(e) => setSplit({ ...split, amount: e.target.value })} />
+              <select className="w-full rounded-md border bg-background p-2" aria-label="Seconda categoria" value={split.category}
+                onChange={(e) => setSplit({ ...split, category: e.target.value })}>
+                <option value="">Seconda categoria</option>
+                {categories.filter((category) => category.type === "expense").map((category) =>
+                  <option key={category.id} value={category.id}>{category.name}</option>)}
+              </select>
+            </div>
+          </details>
+        )}
 
-        <div className="space-y-2">
-          <Label>Descrizione</Label>
+        <details className="rounded-lg border p-3">
+          <summary>Altre opzioni</summary>
+          <Label htmlFor="movement-description">Descrizione</Label>
           <Input
+            id="movement-description"
             value={form.description}
             onChange={(e) => setForm({ ...form, description: e.target.value })}
             className="min-h-touch"
           />
-        </div>
+        </details>
         <div className="space-y-2">
           <Label>{txType === "transfer" ? "Da" : "Conto"}</Label>
           <Select

@@ -106,7 +106,10 @@ export function CsvImportWizard({
         raw,
       };
     });
-    setMapped(result.filter((r) => r.amount > 0 && r.date));
+    setMapped(result.filter((r) => r.amount > 0 && Number.isFinite(r.amount)
+      && /^\d{4}-\d{2}-\d{2}$/.test(r.date)
+      && Number.isFinite(Date.parse(r.date))
+      && new Date(r.date).toISOString().slice(0, 10) === r.date));
     setStep("preview");
   }
 
@@ -247,7 +250,7 @@ export function CsvImportWizard({
         {step === "preview" && (
           <div className="space-y-3">
             <p className="text-sm text-muted-foreground">
-              {mapped.length} righe · {mapped.filter((r) => r.duplicate).length} duplicati esclusi
+              {mapped.filter((r) => !r.duplicate).length} da importare · {mapped.filter((r) => r.duplicate).length} possibili duplicati esclusi · {rows.length - mapped.length} da correggere nel CSV
             </p>
             <div className="max-h-80 overflow-auto rounded-lg border divide-y">
               {mapped.slice(0, 50).map((r, i) => (
@@ -269,7 +272,7 @@ export function CsvImportWizard({
               <Button variant="outline" onClick={() => setStep("map")}>
                 Indietro
               </Button>
-              <Button onClick={() => setStep("confirm")}>Continua</Button>
+              <Button disabled={!mapped.some((r) => !r.duplicate)} onClick={() => setStep("confirm")}>Continua</Button>
             </div>
           </div>
         )}

@@ -9,6 +9,7 @@ import {
   fetchTransactions,
 } from "@/lib/data/queries";
 import { DashboardView } from "@/features/analytics/dashboard-view";
+import { UpcomingPayments } from "@/features/analytics/upcoming-payments";
 import {
   calcBudgetProgress,
   calcExpenseByCategory,
@@ -97,6 +98,7 @@ export default async function DashboardPage() {
   return (
     <AppShell title="Home">
       <DashboardView
+        upcoming={<UpcomingPayments recurring={recurring} debts={debts} />}
         availability={availability}
         availabilityCurrency={primary.currency}
         currencyGroups={currencyGroups}

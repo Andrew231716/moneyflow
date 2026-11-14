@@ -113,6 +113,10 @@ export function BudgetCard({
         indicatorClassName={barColor[state]}
         className="h-2.5"
       />
+      <p className="text-sm font-semibold">
+        {spent > Number(budget.amount) ? "Oltre il limite di " : "Disponibile "}
+        <MoneyValue amount={Math.abs(Number(budget.amount) - spent)} size="sm" />
+      </p>
       <div className="flex items-baseline justify-between gap-2 text-sm">
         <MoneyValue amount={spent} size="sm" tone="danger" />
         <span className="text-muted-foreground text-xs">

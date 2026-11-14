@@ -50,6 +50,7 @@ import {
 } from "@/components/money";
 
 export function DashboardView(props: {
+  upcoming: React.ReactNode;
   availability: number;
   availabilityCurrency: string;
   currencyGroups: { currency: string; total: number }[];
@@ -231,16 +232,18 @@ export function DashboardView(props: {
 
       <DashboardSyncStatus />
 
-      <div className="grid gap-3 sm:grid-cols-3">
+      <h2 className="text-sm font-semibold capitalize">{new Intl.DateTimeFormat("it-IT", { month: "long", year: "numeric", timeZone: "Europe/Rome" }).format(new Date())}</h2>
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3" aria-label="Riepilogo del mese">
         <StatCard title="Entrate" value={summary.income} tone="success" hint="Mese corrente" />
         <StatCard title="Uscite" value={summary.expense} tone="danger" hint="Mese corrente" />
         <StatCard
-          title="Risparmio"
+          title="Differenza del mese"
           value={summary.savings}
           tone={summary.savings >= 0 ? "success" : "danger"}
           hint={`${summary.savingsRate.toFixed(0)}% delle entrate`}
         />
       </div>
+      {props.upcoming}
 
       <div className="grid gap-4 lg:grid-cols-3">
         <ChartCard

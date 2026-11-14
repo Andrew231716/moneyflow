@@ -16,6 +16,9 @@ import {
   YAxis,
 } from "recharts";
 import { formatCurrency } from "@/lib/utils";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { format } from "date-fns";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   PageHeader,
@@ -47,7 +50,7 @@ export function StatisticsView({
 }: {
   series6: { label: string; income: number; expense: number; savings: number }[];
   series12: { label: string; income: number; expense: number; savings: number }[];
-  byCategory: { name: string; color: string; total: number }[];
+  byCategory: { name: string; color: string; total: number; categoryId: string | null }[];
   previousByCategory: { name: string; color: string; total: number }[];
   cutPotential: CutPotentialResult;
   goalTrajectories: GoalTrajectory[];
@@ -59,6 +62,9 @@ export function StatisticsView({
   goals: Goal[];
 }) {
   const comparison = buildCategoryComparison(byCategory, previousByCategory);
+  const router = useRouter();
+  const review = comparison.slice().sort((a, b) =>
+    Math.abs(b.current - b.previous) - Math.abs(a.current - a.previous));
 
   return (
     <div className="space-y-5">
@@ -76,6 +82,23 @@ export function StatisticsView({
         goals={goals}
         byCategory={byCategory}
       />
+      <section className="mf-surface space-y-2 p-4">
+        <h2 className="font-semibold">Riepilogo del mese</h2>
+        <ul className="space-y-2 text-sm">
+          {byCategory.slice(0, 5).map((category) => (
+            <li key={category.categoryId ?? "uncategorized"}>
+              <Link className="flex justify-between gap-2 underline"
+                href={`/transactions?category=${category.categoryId ?? "uncategorized"}&month=${format(new Date(), "yyyy-MM")}`}>
+                <span>{category.name}</span><span>{formatCurrency(category.total)}</span>
+              </Link>
+            </li>
+          ))}
+        </ul>
+        {review[0] && review[0].current !== review[0].previous && (
+          <p className="text-sm">Variazione maggiore nel confronto: {review[0].name} · {formatCurrency(review[0].current - review[0].previous)}</p>
+        )}
+        <Link className="text-sm text-primary underline" href="/transactions?pending=1">Controlla i movimenti in sospeso</Link>
+      </section>
 
       <Tabs defaultValue="6">
         <TabsList>
@@ -110,6 +133,10 @@ export function StatisticsView({
                   innerRadius={48}
                   outerRadius={90}
                   paddingAngle={2}
+                  onClick={(_, index) => {
+                    const category = byCategory[index];
+                    if (category) router.push(`/transactions?category=${category.categoryId ?? "uncategorized"}&month=${format(new Date(), "yyyy-MM")}`);
+                  }}
                 >
                   {byCategory.slice(0, 8).map((c) => (
                     <Cell key={c.name} fill={c.color} />

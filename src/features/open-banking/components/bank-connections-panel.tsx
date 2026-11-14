@@ -361,7 +361,10 @@ export function BankConnectionsPanel() {
                     <p className="text-xs text-amber-800 dark:text-amber-200">{rateLimitHint}</p>
                   )}
                   {hardError && !c.consent_expired && (
-                    <p className="text-xs text-warning">{hardError}</p>
+                    <div className="text-xs text-warning">
+                      <p>{hardError}</p>
+                      <p>Controlla lo stato della connessione e riprova con Sincronizza.</p>
+                    </div>
                   )}
                   {c.consent_message && (
                     <p className="text-xs text-warning">{c.consent_message}</p>

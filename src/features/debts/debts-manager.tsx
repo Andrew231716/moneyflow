@@ -26,7 +26,7 @@ export function DebtsManager({ debts }: { debts: Debt[] }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Debt | null>(null);
-  const [form, setForm] = useState({ name: "", amount: "", notes: "" });
+  const [form, setForm] = useState({ name: "", amount: "", notes: "", due_date: "" });
   const [saving, setSaving] = useState(false);
 
   const openDebts = debts.filter(isDebtOpen);
@@ -35,7 +35,7 @@ export function DebtsManager({ debts }: { debts: Debt[] }) {
 
   function openCreate() {
     setEditing(null);
-    setForm({ name: "", amount: "", notes: "" });
+    setForm({ name: "", amount: "", notes: "", due_date: "" });
     setOpen(true);
   }
 
@@ -45,6 +45,7 @@ export function DebtsManager({ debts }: { debts: Debt[] }) {
       name: d.name,
       amount: String(d.amount),
       notes: d.notes ?? "",
+      due_date: d.due_date ?? "",
     });
     setOpen(true);
   }
@@ -71,6 +72,7 @@ export function DebtsManager({ debts }: { debts: Debt[] }) {
             name: form.name.trim(),
             amount,
             notes: form.notes.trim() || null,
+            due_date: form.due_date || null,
           })
           .eq("id", editing.id);
         if (error) throw error;
@@ -81,6 +83,7 @@ export function DebtsManager({ debts }: { debts: Debt[] }) {
           name: form.name.trim(),
           amount,
           notes: form.notes.trim() || null,
+          due_date: form.due_date || null,
         });
         if (error) throw error;
         toast.success("Debito aggiunto");
@@ -223,6 +226,9 @@ export function DebtsManager({ debts }: { debts: Debt[] }) {
           onChange={(amount) => setForm({ ...form, amount })}
         />
         <div className="space-y-2">
+          <Label htmlFor="debt-due-date">Scadenza (opzionale)</Label>
+          <Input id="debt-due-date" type="date" value={form.due_date}
+            onChange={(event) => setForm({ ...form, due_date: event.target.value })} />
           <Label htmlFor="debt-notes">Note (opzionale)</Label>
           <Input
             id="debt-notes"
