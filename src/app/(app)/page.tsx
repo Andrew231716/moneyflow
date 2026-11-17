@@ -98,7 +98,14 @@ export default async function DashboardPage() {
   return (
     <AppShell title="Home">
       <DashboardView
-        upcoming={<UpcomingPayments recurring={recurring} debts={debts} />}
+        upcoming={
+          <UpcomingPayments
+            recurring={recurring}
+            debts={debts}
+            transactions={transactions}
+            forecast={forecast}
+          />
+        }
         availability={availability}
         availabilityCurrency={primary.currency}
         currencyGroups={currencyGroups}
@@ -114,7 +121,6 @@ export default async function DashboardPage() {
         openDebtsTotal={openDebtsTotal}
         netWorth={netWorth}
         recent={recent}
-        forecast={forecast}
         insights={insights}
         cutPotential={cutPotential}
         goalTrajectories={goalTrajectories.slice(0, 3)}

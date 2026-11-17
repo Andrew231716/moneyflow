@@ -72,13 +72,6 @@ export function DashboardView(props: {
   openDebtsTotal: number;
   netWorth: number;
   recent: Transaction[];
-  forecast: {
-    projectedExpense: number;
-    projectedIncome: number;
-    projectedSavings: number;
-    daysLeft: number;
-    dailyBurn: number;
-  };
   insights: Insight[];
   cutPotential: CutPotentialResult;
   goalTrajectories: GoalTrajectory[];
@@ -99,7 +92,6 @@ export function DashboardView(props: {
     openDebtsTotal,
     netWorth,
     recent,
-    forecast,
     insights,
     cutPotential,
     goalTrajectories,
@@ -117,7 +109,6 @@ export function DashboardView(props: {
   const reservedGoals = goals.filter(
     (g) => g.status !== "cancelled" && !g.settled
   );
-  const activeGoals = reservedGoals.filter((g) => g.status === "active");
   const highlightGoals = reservedGoals.slice(0, 4);
   const openDebts = debts.filter((d) => !d.paid_at).slice(0, 4);
 
@@ -132,8 +123,14 @@ export function DashboardView(props: {
     importHref: "/transactions/import",
   });
 
+  const monthLabel = new Intl.DateTimeFormat("it-IT", {
+    month: "long",
+    year: "numeric",
+    timeZone: "Europe/Rome",
+  }).format(new Date());
+
   return (
-    <div className="space-y-6">
+    <div className="space-y-5 sm:space-y-6">
       {isEmpty && (
         <EmptyState
           icon={<Sparkles className="h-6 w-6" />}
@@ -198,9 +195,6 @@ export function DashboardView(props: {
       {currencyGroups.length > 1 && (
         <div className="mf-surface p-4 space-y-2">
           <p className="text-sm font-medium">Saldi per valuta</p>
-          <p className="text-xs text-muted-foreground">
-            Nessuna conversione FX (gratuita e trasparente): i totali restano separati.
-          </p>
           <ul className="space-y-1.5">
             {currencyGroups.map((g) => (
               <li
@@ -232,36 +226,217 @@ export function DashboardView(props: {
 
       <DashboardSyncStatus />
 
-      <h2 className="text-sm font-semibold capitalize">{new Intl.DateTimeFormat("it-IT", { month: "long", year: "numeric", timeZone: "Europe/Rome" }).format(new Date())}</h2>
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3" aria-label="Riepilogo del mese">
-        <StatCard title="Entrate" value={summary.income} tone="success" hint="Mese corrente" />
-        <StatCard title="Uscite" value={summary.expense} tone="danger" hint="Mese corrente" />
-        <StatCard
-          title="Differenza del mese"
-          value={summary.savings}
-          tone={summary.savings >= 0 ? "success" : "danger"}
-          hint={`${summary.savingsRate.toFixed(0)}% delle entrate`}
+      <section className="space-y-3">
+        <SectionHeader
+          title={monthLabel.charAt(0).toUpperCase() + monthLabel.slice(1)}
+          description="Andamento del mese in corso"
+          href="/statistics"
+          linkLabel="Statistiche"
         />
-      </div>
+        <div
+          className="grid grid-cols-3 gap-2 sm:gap-3"
+          aria-label="Riepilogo del mese"
+        >
+          <StatCard
+            title="Entrate"
+            value={summary.income}
+            tone="success"
+            className="p-3 sm:p-5"
+          />
+          <StatCard
+            title="Uscite"
+            value={summary.expense}
+            tone="danger"
+            className="p-3 sm:p-5"
+          />
+          <StatCard
+            title="Differenza"
+            value={summary.savings}
+            tone={summary.savings >= 0 ? "success" : "danger"}
+            hint={`${summary.savingsRate.toFixed(0)}%`}
+            className="p-3 sm:p-5"
+          />
+        </div>
+      </section>
+
       {props.upcoming}
+
+      <section className="mf-surface p-4 sm:p-5 space-y-3">
+        <SectionHeader
+          title="Ultimi movimenti"
+          href="/transactions"
+          linkLabel="Tutti"
+        />
+        {recent.length === 0 ? (
+          <EmptyState
+            className="border-0 shadow-none py-8"
+            icon={<Wallet className="h-5 w-5" />}
+            title="Nessun movimento"
+            description="Registra una spesa, importa CSV o sincronizza la banca collegata."
+            action={
+              <div className="flex flex-wrap justify-center gap-2">
+                <Button asChild size="sm">
+                  <Link href="/transactions?new=expense">Nuova spesa</Link>
+                </Button>
+                <Button asChild size="sm" variant="outline">
+                  <Link href="/accounts">Sincronizza banca</Link>
+                </Button>
+              </div>
+            }
+          />
+        ) : (
+          <div className="divide-y divide-border/60 -mx-1">
+            {recent.map((tx) => (
+              <TransactionItem key={tx.id} transaction={tx} />
+            ))}
+          </div>
+        )}
+      </section>
+
+      <div className="grid gap-4 lg:grid-cols-2">
+        <section className="mf-surface p-4 sm:p-5 space-y-3">
+          <SectionHeader
+            title="Budget"
+            description="Progresso del mese"
+            href="/budgets"
+          />
+          {budgetProgress.length === 0 ? (
+            <div className="space-y-3 py-1">
+              <p className="text-sm text-muted-foreground">
+                Nessun budget impostato
+              </p>
+              <Button asChild size="sm" variant="outline" className="min-h-touch">
+                <Link href="/budgets">Imposta dai top spese</Link>
+              </Button>
+            </div>
+          ) : (
+            <div className="grid gap-3 sm:grid-cols-2">
+              {budgetProgress.slice(0, 4).map((b) => (
+                <BudgetCard
+                  key={b.budget.id}
+                  progress={b}
+                  compact
+                  href="/budgets"
+                />
+              ))}
+            </div>
+          )}
+        </section>
+
+        <section className="mf-surface p-4 sm:p-5 space-y-3">
+          <SectionHeader
+            title="Obiettivi"
+            description={
+              reservedGoalsTotal > 0
+                ? `${formatCurrency(reservedGoalsTotal)} accantonati`
+                : "Fuori dalla disponibilità"
+            }
+            href="/goals"
+          />
+          {highlightGoals.length > 0 ? (
+            <div className="space-y-3">
+              {highlightGoals.slice(0, 3).map((g) => (
+                <GoalCard key={g.id} goal={g} compact href="/goals" />
+              ))}
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground">
+              Nessun obiettivo attivo
+            </p>
+          )}
+          {goalTrajectories.length > 0 && (
+            <div className="space-y-2 pt-1 border-t border-border/60">
+              {goalTrajectories.slice(0, 2).map((t) => (
+                <GoalTrajectoryCard key={t.goalId} trajectory={t} />
+              ))}
+            </div>
+          )}
+        </section>
+      </div>
+
+      {(savingsAccounts.length > 0 || openDebtsTotal > 0) && (
+        <div className="grid gap-4 lg:grid-cols-2">
+          {savingsAccounts.length > 0 && (
+            <section className="mf-surface p-4 sm:p-5 space-y-3">
+              <SectionHeader
+                title="Salvadanaio"
+                description={`${formatCurrency(savingsBalance)} nei conti risparmio`}
+                href="/accounts"
+                linkLabel="Conti"
+              />
+              <MoneyValue amount={savingsBalance} size="lg" tone="success" />
+              <div className="grid gap-3 sm:grid-cols-2">
+                {savingsAccounts.slice(0, 2).map((a) => (
+                  <AccountCard key={a.id} account={a} href="/accounts" />
+                ))}
+              </div>
+            </section>
+          )}
+
+          {openDebtsTotal > 0 && (
+            <section className="mf-surface p-4 sm:p-5 space-y-3">
+              <SectionHeader
+                title="Debiti da saldare"
+                description={`${formatCurrency(openDebtsTotal)} ancora da pagare`}
+                href="/debts"
+                linkLabel="Gestisci"
+              />
+              <MoneyValue amount={openDebtsTotal} size="lg" tone="danger" />
+              <ul className="space-y-2">
+                {openDebts.map((d) => (
+                  <li
+                    key={d.id}
+                    className="flex items-center justify-between gap-3 text-sm"
+                  >
+                    <span className="truncate font-medium">{d.name}</span>
+                    <MoneyValue
+                      amount={Number(d.amount)}
+                      size="sm"
+                      tone="danger"
+                    />
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
+        </div>
+      )}
+
+      <CutPotentialSection result={cutPotential} compact />
 
       <div className="grid gap-4 lg:grid-cols-3">
         <ChartCard
           title="Andamento"
           description="Entrate vs uscite · 6 mesi"
           className="lg:col-span-2"
-          contentClassName="h-56 sm:h-64"
+          contentClassName="h-52 sm:h-60"
         >
           <ResponsiveContainer width="100%" height="100%">
             <AreaChart data={series}>
               <defs>
                 <linearGradient id="inc" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="hsl(152 64% 34%)" stopOpacity={0.35} />
-                  <stop offset="100%" stopColor="hsl(152 64% 34%)" stopOpacity={0} />
+                  <stop
+                    offset="0%"
+                    stopColor="hsl(152 64% 34%)"
+                    stopOpacity={0.35}
+                  />
+                  <stop
+                    offset="100%"
+                    stopColor="hsl(152 64% 34%)"
+                    stopOpacity={0}
+                  />
                 </linearGradient>
                 <linearGradient id="exp" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="hsl(0 72% 48%)" stopOpacity={0.28} />
-                  <stop offset="100%" stopColor="hsl(0 72% 48%)" stopOpacity={0} />
+                  <stop
+                    offset="0%"
+                    stopColor="hsl(0 72% 48%)"
+                    stopOpacity={0.28}
+                  />
+                  <stop
+                    offset="100%"
+                    stopColor="hsl(0 72% 48%)"
+                    stopOpacity={0}
+                  />
                 </linearGradient>
               </defs>
               <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
@@ -269,7 +444,10 @@ export function DashboardView(props: {
               <YAxis tick={{ fontSize: 12 }} width={48} />
               <Tooltip
                 formatter={(v: number) => formatCurrency(v)}
-                contentStyle={{ borderRadius: 12, border: "1px solid hsl(var(--border))" }}
+                contentStyle={{
+                  borderRadius: 12,
+                  border: "1px solid hsl(var(--border))",
+                }}
               />
               <Area
                 type="monotone"
@@ -289,9 +467,15 @@ export function DashboardView(props: {
           </ResponsiveContainer>
         </ChartCard>
 
-        <ChartCard title="Categorie" description="Spese del mese" contentClassName="h-56 sm:h-64">
+        <ChartCard
+          title="Categorie"
+          description="Spese del mese"
+          contentClassName="h-52 sm:h-60"
+        >
           {byCategory.length === 0 ? (
-            <p className="text-sm text-muted-foreground py-12 text-center">Nessuna spesa</p>
+            <p className="text-sm text-muted-foreground py-12 text-center">
+              Nessuna spesa
+            </p>
           ) : (
             <ResponsiveContainer width="100%" height="100%">
               <PieChart>
@@ -314,254 +498,19 @@ export function DashboardView(props: {
         </ChartCard>
       </div>
 
-      {(savingsAccounts.length > 0 || reservedGoals.length > 0) && (
-        <div className="grid gap-4 lg:grid-cols-2">
-          <section className="mf-surface p-5 space-y-4">
-            <SectionHeader
-              title="Salvadanaio"
-              description={
-                savingsAccounts.length > 0
-                  ? `${formatCurrency(savingsBalance)} nei conti risparmio`
-                  : "Conti risparmio"
-              }
-              href="/accounts"
-              linkLabel="Conti"
-            />
-            {savingsAccounts.length > 0 ? (
-              <div className="space-y-3">
-                <MoneyValue amount={savingsBalance} size="lg" tone="success" />
-                <div className="grid gap-3 sm:grid-cols-2">
-                  {savingsAccounts.slice(0, 3).map((a) => (
-                    <AccountCard key={a.id} account={a} href="/accounts" />
-                  ))}
-                </div>
-                <p className="text-[11px] text-muted-foreground leading-relaxed">
-                  Il totale in alto include solo Conti + Salvadanaio. Gli Obiettivi
-                  restano separati e non entrano nella disponibilità o nel patrimonio.
-                </p>
-              </div>
-            ) : (
-              <p className="text-sm text-muted-foreground">
-                Nessun conto risparmio. Creane uno per il Salvadanaio.
-              </p>
-            )}
-          </section>
-
-          <section className="mf-surface p-5 space-y-4">
-            <SectionHeader
-              title="Obiettivi"
-              description="Somma accantonata fuori dalla disponibilità"
-              href="/goals"
-            />
-            <MoneyValue amount={reservedGoalsTotal} size="lg" tone="success" />
-            <p className="text-xs text-muted-foreground leading-relaxed">
-              Gli importi degli obiettivi restano fuori dalla Disponibilità e dal
-              patrimonio. Dopo{" "}
-              <span className="font-medium text-foreground">Saldato</span> escono
-              anche dal totale Obiettivi.
-            </p>
-            {highlightGoals.length > 0 ? (
-              <div className="space-y-3">
-                {highlightGoals.slice(0, 3).map((g) => (
-                  <GoalCard key={g.id} goal={g} compact href="/goals" />
-                ))}
-              </div>
-            ) : (
-              <p className="text-sm text-muted-foreground">
-                Nessun obiettivo riservato
-              </p>
-            )}
-          </section>
-        </div>
+      {insights.length > 0 && (
+        <section className="mf-surface p-4 sm:p-5 space-y-3">
+          <SectionHeader
+            title="Insight"
+            description="Suggerimenti automatici"
+          />
+          <div className="grid gap-2 sm:grid-cols-2">
+            {insights.slice(0, 4).map((i) => (
+              <InsightCard key={i.id} insight={i} />
+            ))}
+          </div>
+        </section>
       )}
-
-      <section className="mf-surface p-5 space-y-4">
-        <SectionHeader
-          title="Debiti da saldare"
-          description={
-            openDebtsTotal > 0
-              ? `${formatCurrency(openDebtsTotal)} ancora da pagare`
-              : "Passività manuali (non in disponibilità)"
-          }
-          href="/debts"
-          linkLabel="Gestisci"
-        />
-        {openDebtsTotal > 0 ? (
-          <div className="space-y-3">
-            <MoneyValue amount={openDebtsTotal} size="lg" tone="danger" />
-            <ul className="space-y-2">
-              {openDebts.map((d) => (
-                <li
-                  key={d.id}
-                  className="flex items-center justify-between gap-3 text-sm"
-                >
-                  <span className="truncate font-medium">{d.name}</span>
-                  <MoneyValue amount={Number(d.amount)} size="sm" tone="danger" />
-                </li>
-              ))}
-            </ul>
-            <p className="text-[11px] text-muted-foreground leading-relaxed">
-              I debiti non riducono la Disponibilità. Netto ={" "}
-              {formatCurrency(netWorth)}.
-            </p>
-          </div>
-        ) : (
-          <div className="space-y-3 py-1">
-            <p className="text-sm text-muted-foreground">
-              Nessun debito aperto. Aggiungi un importo da saldare se ti serve.
-            </p>
-            <Button asChild size="sm" variant="outline" className="min-h-touch">
-              <Link href="/debts">Aggiungi debito</Link>
-            </Button>
-          </div>
-        )}
-      </section>
-
-      <div className="grid gap-4 lg:grid-cols-2">
-        <CutPotentialSection result={cutPotential} compact />
-
-        <section className="space-y-4">
-          <div className="px-1">
-            <SectionHeader
-              title="Tappe obiettivi"
-              description="Ritmo e previsione rispetto alla scadenza"
-              href="/goals"
-            />
-          </div>
-          {goalTrajectories.length === 0 ? (
-            <div className="mf-surface p-5">
-              <p className="text-sm text-muted-foreground">
-                Nessun obiettivo da monitorare
-              </p>
-            </div>
-          ) : (
-            <div className="space-y-3">
-              {goalTrajectories.map((t) => (
-                <GoalTrajectoryCard key={t.goalId} trajectory={t} />
-              ))}
-            </div>
-          )}
-        </section>
-      </div>
-
-      <div className="grid gap-4 lg:grid-cols-2">
-        <section className="mf-surface p-5 space-y-4">
-          <SectionHeader title="Budget" description="Progresso mensile" href="/budgets" />
-          {budgetProgress.length === 0 ? (
-            <div className="space-y-3 py-2">
-              <p className="text-sm text-muted-foreground">Nessun budget impostato</p>
-              <Button asChild size="sm" variant="outline" className="min-h-touch">
-                <Link href="/budgets">Imposta dai top spese</Link>
-              </Button>
-            </div>
-          ) : (
-            <div className="grid gap-3 sm:grid-cols-2">
-              {budgetProgress.slice(0, 4).map((b) => (
-                <BudgetCard
-                  key={b.budget.id}
-                  progress={b}
-                  compact
-                  href="/budgets"
-                />
-              ))}
-            </div>
-          )}
-        </section>
-
-        <section className="mf-surface p-5 space-y-4">
-          <SectionHeader title="Obiettivi" href="/goals" />
-          {activeGoals.length === 0 ? (
-            <p className="text-sm text-muted-foreground py-4">Nessun obiettivo attivo</p>
-          ) : (
-            <div className="space-y-3">
-              {activeGoals.slice(0, 3).map((g) => (
-                <GoalCard key={g.id} goal={g} compact href="/goals" />
-              ))}
-            </div>
-          )}
-        </section>
-      </div>
-
-      <div className="grid gap-4 lg:grid-cols-3">
-        <section className="mf-surface p-5 space-y-3 lg:col-span-2">
-          <SectionHeader title="Ultimi movimenti" href="/transactions" linkLabel="Tutti" />
-          {recent.length === 0 ? (
-            <EmptyState
-              className="border-0 shadow-none py-8"
-              icon={<Wallet className="h-5 w-5" />}
-              title="Nessun movimento"
-              description="Registra una spesa, importa CSV o sincronizza la banca collegata."
-              action={
-                <div className="flex flex-wrap justify-center gap-2">
-                  <Button asChild size="sm">
-                    <Link href="/transactions?new=expense">Nuova spesa</Link>
-                  </Button>
-                  <Button asChild size="sm" variant="outline">
-                    <Link href="/accounts">Sincronizza banca</Link>
-                  </Button>
-                </div>
-              }
-            />
-          ) : (
-            <div className="divide-y divide-border/60 -mx-1">
-              {recent.map((tx) => (
-                <TransactionItem key={tx.id} transaction={tx} />
-              ))}
-            </div>
-          )}
-        </section>
-
-        <section className="space-y-4">
-          <div className="mf-surface p-5 space-y-3">
-            <SectionHeader
-              title="Previsione"
-              description={`${forecast.daysLeft} giorni rimanenti`}
-            />
-            <div className="space-y-2.5 text-sm">
-              <ForecastRow label="Entrate stimate" amount={forecast.projectedIncome} tone="success" />
-              <ForecastRow label="Uscite stimate" amount={forecast.projectedExpense} tone="danger" />
-              <ForecastRow label="Saldo stimato" amount={forecast.projectedSavings} strong />
-            </div>
-          </div>
-
-          <div className="mf-surface p-5 space-y-3">
-            <SectionHeader title="Insight" description="Suggerimenti automatici" />
-            {insights.length === 0 ? (
-              <p className="text-sm text-muted-foreground">Nessun insight per ora</p>
-            ) : (
-              <div className="space-y-2">
-                {insights.slice(0, 4).map((i) => (
-                  <InsightCard key={i.id} insight={i} />
-                ))}
-              </div>
-            )}
-          </div>
-        </section>
-      </div>
-    </div>
-  );
-}
-
-function ForecastRow({
-  label,
-  amount,
-  tone,
-  strong,
-}: {
-  label: string;
-  amount: number;
-  tone?: "success" | "danger";
-  strong?: boolean;
-}) {
-  return (
-    <div className="flex justify-between items-baseline gap-3">
-      <span className="text-muted-foreground">{label}</span>
-      <MoneyValue
-        amount={amount}
-        size="sm"
-        tone={tone ?? "default"}
-        className={strong ? "font-bold" : undefined}
-      />
     </div>
   );
 }

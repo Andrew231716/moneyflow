@@ -341,25 +341,22 @@ export function RecurringManager({
         }
       />
 
-      <div className="mf-surface p-4 space-y-2 text-sm">
-        <div className="flex flex-wrap gap-4">
-          <div>
-            <p className="text-xs text-muted-foreground">Mensile netto</p>
-            <MoneyValue
-              amount={totals.monthly}
-              size="md"
-              tone={totals.monthly >= 0 ? "success" : "danger"}
-            />
-          </div>
-          <div>
-            <p className="text-xs text-muted-foreground">Annuo</p>
-            <MoneyValue amount={totals.yearly} size="md" />
-          </div>
+      <div className="mf-surface-lift grid grid-cols-2 gap-3 p-4 sm:gap-6">
+        <div>
+          <p className="text-xs text-muted-foreground">Mensile netto</p>
+          <MoneyValue
+            amount={totals.monthly}
+            size="lg"
+            tone={totals.monthly >= 0 ? "success" : "danger"}
+          />
         </div>
-        <p className="text-xs text-muted-foreground leading-relaxed">
-          Alla data di scadenza MoneyFlow <strong>non</strong> accredita né
-          addebita il conto indicato: i ricorrenti servono per previsioni a fine
-          mese e per ricordarti le uscite/entrate fisse.
+        <div>
+          <p className="text-xs text-muted-foreground">Impatto annuo</p>
+          <MoneyValue amount={totals.yearly} size="lg" />
+        </div>
+        <p className="col-span-2 text-xs text-muted-foreground leading-relaxed">
+          I ricorrenti non spostano soldi da soli: servono per previsioni e
+          scadenze sulla Home.
         </p>
       </div>
 

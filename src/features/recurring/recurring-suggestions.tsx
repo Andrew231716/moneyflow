@@ -190,15 +190,15 @@ export function RecurringSuggestions({
   }
 
   return (
-    <section className="mf-surface space-y-3 border border-primary/15 bg-primary/[0.04] p-4">
+    <section className="mf-surface-lift space-y-3 border border-primary/20 bg-primary/[0.04] p-4">
       <div className="space-y-1">
-        <h2 className="flex items-center gap-2 text-sm font-semibold">
+        <h2 className="flex items-center gap-2 text-base font-semibold tracking-tight">
           <Sparkles className="h-4 w-4 text-primary" />
-          Rilevati dai tuoi movimenti
+          Possibili ricorrenti dai mesi scorsi
         </h2>
         <p className="text-xs text-muted-foreground leading-relaxed">
-          Sembra che queste uscite/entrate si ripetano ogni mese. Confermale e
-          scegli la categoria — oppure ignora.
+          Confermali, scegli la categoria e li vedrai anche tra i prossimi
+          pagamenti in Home — oppure ignora.
         </p>
       </div>
 

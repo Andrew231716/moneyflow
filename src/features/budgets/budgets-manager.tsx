@@ -274,7 +274,7 @@ export function BudgetsManager({
         }
       />
 
-      <div className="mf-surface flex items-center justify-between gap-2 px-2 py-1.5">
+      <div className="mf-surface-lift flex items-center justify-between gap-2 px-2 py-2">
         {canGoPrev ? (
           <Button asChild variant="ghost" size="sm" className="min-h-touch px-2">
             <Link href={hrefForMonth(prevMonth)} aria-label="Mese precedente">
