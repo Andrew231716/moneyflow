@@ -34,11 +34,11 @@ export const mainNav: NavItem[] = [
     sidebar: true,
     mobilePrimary: true,
   },
-  { href: "/accounts", label: "Conti", icon: Wallet, sidebar: true, mobilePrimary: true },
+  { href: "/recurring", label: "Ricorrenti", icon: Repeat, sidebar: true, mobilePrimary: true },
   { href: "/budgets", label: "Budget", icon: PieChart, sidebar: true, mobilePrimary: true },
+  { href: "/accounts", label: "Conti", icon: Wallet, sidebar: true, mobileMore: true },
   { href: "/goals", label: "Obiettivi", icon: Target, sidebar: true, mobileMore: true },
   { href: "/debts", label: "Debiti", icon: HandCoins, sidebar: true, mobileMore: true },
-  { href: "/recurring", label: "Ricorrenti", icon: Repeat, sidebar: true, mobileMore: true },
   {
     href: "/statistics",
     label: "Statistiche",

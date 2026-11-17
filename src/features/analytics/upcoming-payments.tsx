@@ -1,5 +1,10 @@
+"use client";
+
+import { useMemo, useState } from "react";
 import Link from "next/link";
-import { Sparkles } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { Check, SkipForward, Sparkles } from "lucide-react";
+import { toast } from "sonner";
 import {
   buildUpcomingPayments,
   sumUpcomingAmounts,
@@ -7,10 +12,38 @@ import {
   type UpcomingPaymentItem,
   type UpcomingPaymentSource,
 } from "@/lib/finance/upcoming-payments";
-import type { Debt, RecurringTransaction, Transaction } from "@/types/database";
+import { advanceRecurringDueDate } from "@/lib/finance/recurring-actions";
+import type {
+  Account,
+  Category,
+  Debt,
+  RecurringTransaction,
+  Transaction,
+} from "@/types/database";
+import { createClient } from "@/lib/supabase/client";
 import { MoneyValue, SectionHeader } from "@/components/money";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+
+const DISMISS_KEY = "mf-dismissed-recurring-suggestions";
+
+function readDismissed(): Set<string> {
+  if (typeof window === "undefined") return new Set();
+  try {
+    const raw = localStorage.getItem(DISMISS_KEY);
+    if (!raw) return new Set();
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) return new Set();
+    return new Set(parsed.filter((x): x is string => typeof x === "string"));
+  } catch {
+    return new Set();
+  }
+}
+
+function writeDismissed(ids: Set<string>) {
+  localStorage.setItem(DISMISS_KEY, JSON.stringify([...ids]));
+}
 
 function sourceMeta(source: UpcomingPaymentSource): {
   label: string;
@@ -52,77 +85,19 @@ function weekdayHint(iso: string): string {
   }
 }
 
-function PaymentRow({ item }: { item: UpcomingPaymentItem }) {
-  const meta = sourceMeta(item.source);
-  const inner = (
-    <>
-      <div className="flex items-start gap-3 min-w-0">
-        <div
-          className={cn(
-            "mt-0.5 flex h-10 w-10 shrink-0 flex-col items-center justify-center rounded-xl text-center",
-            item.source === "predicted"
-              ? "bg-primary/10 text-primary"
-              : item.source === "debt"
-                ? "bg-warning/10 text-warning"
-                : "bg-secondary text-secondary-foreground"
-          )}
-        >
-          <span className="text-[10px] font-medium uppercase leading-none">
-            {weekdayHint(item.date)}
-          </span>
-          <span className="text-sm font-semibold tabular-nums leading-tight">
-            {formatItDate(item.date)}
-          </span>
-        </div>
-        <div className="min-w-0 space-y-1">
-          <p className="font-medium truncate">{item.title}</p>
-          <div className="flex flex-wrap items-center gap-1.5">
-            <Badge variant="outline" className={cn("text-[10px]", meta.className)}>
-              {meta.label}
-            </Badge>
-            {item.source === "predicted" && item.occurrence_count ? (
-              <span className="text-[11px] text-muted-foreground">
-                vista {item.occurrence_count}× nei mesi scorsi
-              </span>
-            ) : null}
-          </div>
-        </div>
-      </div>
-      <MoneyValue
-        amount={item.amount}
-        currency={item.currency}
-        size="sm"
-        tone="danger"
-        className="shrink-0"
-      />
-    </>
-  );
-
-  if (item.href) {
-    return (
-      <Link
-        href={item.href}
-        className="flex items-center justify-between gap-3 py-3 transition-colors hover:bg-accent/40 -mx-1 px-1 rounded-lg"
-      >
-        {inner}
-      </Link>
-    );
-  }
-
-  return (
-    <div className="flex items-center justify-between gap-3 py-3">{inner}</div>
-  );
-}
-
 export function UpcomingPayments({
   recurring,
   debts,
   transactions = [],
+  accounts = [],
+  categories = [],
   forecast,
 }: {
   recurring: RecurringTransaction[];
   debts: Debt[];
   transactions?: Transaction[];
+  accounts?: Account[];
+  categories?: Category[];
   forecast?: {
     projectedExpense: number;
     projectedIncome: number;
@@ -130,14 +105,25 @@ export function UpcomingPayments({
     daysLeft: number;
   };
 }) {
-  const upcoming = buildUpcomingPayments({
-    recurring,
-    debts,
-    transactions,
-    includePredicted: true,
-    horizonDays: 60,
-    limit: 10,
-  });
+  const router = useRouter();
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [dismissed, setDismissed] = useState<Set<string>>(() => readDismissed());
+
+  const upcoming = useMemo(() => {
+    const items = buildUpcomingPayments({
+      recurring,
+      debts,
+      transactions,
+      includePredicted: true,
+      horizonDays: 60,
+      limit: 12,
+    });
+    return items.filter((item) => {
+      if (item.source !== "predicted" || !item.detection_key) return true;
+      return !dismissed.has(item.detection_key);
+    });
+  }, [recurring, debts, transactions, dismissed]);
+
   const predictedCount = upcoming.filter((i) => i.source === "predicted").length;
   const total = sumUpcomingAmounts(upcoming);
   const unpaid = unpaidDebtsWithoutDue(debts);
@@ -163,6 +149,86 @@ export function UpcomingPayments({
         ].join("\r\n") + "\r\n"
       : "";
 
+  async function confirmPredicted(item: UpcomingPaymentItem) {
+    setBusyId(item.id);
+    try {
+      const supabase = createClient();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (!user) throw new Error("Non autenticato");
+      const accountId =
+        accounts.find((a) => a.id === item.account_id)?.id ?? accounts[0]?.id;
+      if (!accountId) throw new Error("Nessun conto disponibile");
+
+      const categoryId =
+        item.category_id &&
+        categories.some((c) => c.id === item.category_id)
+          ? item.category_id
+          : null;
+
+      const { error } = await supabase.from("recurring_transactions").insert({
+        user_id: user.id,
+        description: item.title,
+        amount: item.amount,
+        type: "expense",
+        frequency: item.frequency ?? "monthly",
+        account_id: accountId,
+        category_id: categoryId,
+        next_due_date: item.date,
+      });
+      if (error) throw error;
+
+      if (item.detection_key) {
+        setDismissed((prev) => {
+          const next = new Set(prev);
+          next.add(item.detection_key!);
+          writeDismissed(next);
+          return next;
+        });
+      }
+      toast.success(`«${item.title}» aggiunto ai ricorrenti`);
+      router.refresh();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Errore");
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function markRecurringPaid(item: UpcomingPaymentItem) {
+    if (!item.recurring_id || !item.frequency) return;
+    setBusyId(item.id);
+    try {
+      const supabase = createClient();
+      const nextDue = advanceRecurringDueDate({
+        next_due_date: item.date,
+        frequency: item.frequency,
+      });
+      const { error } = await supabase
+        .from("recurring_transactions")
+        .update({ next_due_date: nextDue })
+        .eq("id", item.recurring_id);
+      if (error) throw error;
+      toast.success(`Segnato · prossima scadenza ${nextDue.split("-").reverse().join("/")}`);
+      router.refresh();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Errore");
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  function dismissPredicted(item: UpcomingPaymentItem) {
+    if (!item.detection_key) return;
+    setDismissed((prev) => {
+      const next = new Set(prev);
+      next.add(item.detection_key!);
+      writeDismissed(next);
+      return next;
+    });
+  }
+
   return (
     <section className="mf-surface-lift space-y-4 p-4 sm:p-5">
       <SectionHeader
@@ -181,7 +247,7 @@ export function UpcomingPayments({
           <Sparkles className="mx-auto h-5 w-5 text-muted-foreground" />
           <p className="text-sm text-muted-foreground">
             Nessun pagamento in arrivo. Aggiungi un ricorrente o sincronizza i
-            movimenti: impostiamo le previsioni dai mesi scorsi.
+            movimenti.
           </p>
           <Link
             href="/recurring"
@@ -205,53 +271,129 @@ export function UpcomingPayments({
             </p>
           </div>
 
-          <ul className="divide-y divide-border/60 max-h-80 overflow-y-auto">
-            {upcoming.map((item) => (
-              <li key={item.id}>
-                <PaymentRow item={item} />
-              </li>
-            ))}
-          </ul>
+          <ul className="divide-y divide-border/60 max-h-[28rem] overflow-y-auto">
+            {upcoming.map((item) => {
+              const meta = sourceMeta(item.source);
+              return (
+                <li key={item.id} className="py-3 space-y-2">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex items-start gap-3 min-w-0">
+                      <div
+                        className={cn(
+                          "mt-0.5 flex h-10 w-10 shrink-0 flex-col items-center justify-center rounded-xl text-center",
+                          item.source === "predicted"
+                            ? "bg-primary/10 text-primary"
+                            : item.source === "debt"
+                              ? "bg-warning/10 text-warning"
+                              : "bg-secondary text-secondary-foreground"
+                        )}
+                      >
+                        <span className="text-[10px] font-medium uppercase leading-none">
+                          {weekdayHint(item.date)}
+                        </span>
+                        <span className="text-sm font-semibold tabular-nums leading-tight">
+                          {formatItDate(item.date)}
+                        </span>
+                      </div>
+                      <div className="min-w-0 space-y-1">
+                        <p className="font-medium truncate">{item.title}</p>
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <Badge
+                            variant="outline"
+                            className={cn("text-[10px]", meta.className)}
+                          >
+                            {meta.label}
+                          </Badge>
+                          {item.source === "predicted" && item.occurrence_count ? (
+                            <span className="text-[11px] text-muted-foreground">
+                              vista {item.occurrence_count}×
+                            </span>
+                          ) : null}
+                        </div>
+                      </div>
+                    </div>
+                    <MoneyValue
+                      amount={item.amount}
+                      currency={item.currency}
+                      size="sm"
+                      tone="danger"
+                      className="shrink-0"
+                    />
+                  </div>
 
-          {predictedCount > 0 && (
-            <p className="text-xs text-muted-foreground leading-relaxed">
-              Le voci «Da storico» sono stime dai movimenti dei mesi precedenti.
-              Confermale in{" "}
-              <Link href="/recurring" className="text-primary hover:underline">
-                Ricorrenti
-              </Link>{" "}
-              per usarle nelle previsioni di fine mese.
-            </p>
-          )}
+                  {item.source === "predicted" && (
+                    <div className="flex flex-wrap gap-2 pl-[3.25rem]">
+                      <Button
+                        size="sm"
+                        className="min-h-9"
+                        disabled={busyId === item.id}
+                        onClick={() => void confirmPredicted(item)}
+                      >
+                        <Check className="h-3.5 w-3.5" />
+                        {busyId === item.id ? "…" : "Aggiungi"}
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="min-h-9"
+                        onClick={() => dismissPredicted(item)}
+                      >
+                        Ignora
+                      </Button>
+                    </div>
+                  )}
+
+                  {item.source === "recurring" && (
+                    <div className="flex flex-wrap gap-2 pl-[3.25rem]">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="min-h-9"
+                        disabled={busyId === item.id}
+                        onClick={() => void markRecurringPaid(item)}
+                      >
+                        <Check className="h-3.5 w-3.5" />
+                        {busyId === item.id ? "…" : "Segna pagato"}
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="min-h-9"
+                        disabled={busyId === item.id}
+                        onClick={() => void markRecurringPaid(item)}
+                      >
+                        <SkipForward className="h-3.5 w-3.5" />
+                        Salta
+                      </Button>
+                    </div>
+                  )}
+
+                  {item.source === "debt" && (
+                    <div className="pl-[3.25rem]">
+                      <Button asChild size="sm" variant="outline" className="min-h-9">
+                        <Link href="/debts">Gestisci debito</Link>
+                      </Button>
+                    </div>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
         </>
       )}
 
       {forecast && (
         <div className="grid grid-cols-3 gap-2 rounded-xl border bg-muted/25 p-3 text-center">
           <div className="space-y-0.5">
-            <p className="text-[10px] uppercase text-muted-foreground">
-              Entrate
-            </p>
-            <MoneyValue
-              amount={forecast.projectedIncome}
-              size="sm"
-              tone="success"
-            />
+            <p className="text-[10px] uppercase text-muted-foreground">Entrate</p>
+            <MoneyValue amount={forecast.projectedIncome} size="sm" tone="success" />
           </div>
           <div className="space-y-0.5">
-            <p className="text-[10px] uppercase text-muted-foreground">
-              Uscite
-            </p>
-            <MoneyValue
-              amount={forecast.projectedExpense}
-              size="sm"
-              tone="danger"
-            />
+            <p className="text-[10px] uppercase text-muted-foreground">Uscite</p>
+            <MoneyValue amount={forecast.projectedExpense} size="sm" tone="danger" />
           </div>
           <div className="space-y-0.5">
-            <p className="text-[10px] uppercase text-muted-foreground">
-              Fine mese
-            </p>
+            <p className="text-[10px] uppercase text-muted-foreground">Fine mese</p>
             <MoneyValue
               amount={forecast.projectedSavings}
               size="sm"

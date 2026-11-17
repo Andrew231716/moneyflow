@@ -32,6 +32,9 @@ import { DemoSeedButton } from "@/features/analytics/demo-seed-button";
 import { DashboardSyncStatus } from "@/features/open-banking/components/dashboard-sync-status";
 import { AppAlerts } from "@/features/alerts/app-alerts";
 import type { BankConsentAlert } from "@/features/alerts/build-consent-alerts";
+import { HomeTriage } from "@/features/analytics/home-triage";
+import { SyncReviewQueue } from "@/features/transactions/sync-review-queue";
+import { PwaInstallNudge } from "@/features/pwa/install-nudge";
 import {
   StatCard,
   MoneyValue,
@@ -72,6 +75,13 @@ export function DashboardView(props: {
   openDebtsTotal: number;
   netWorth: number;
   recent: Transaction[];
+  allTransactions: Transaction[];
+  triage: {
+    pendingCount: number;
+    uncategorizedCount: number;
+    predictedCount: number;
+    transferPairCount: number;
+  };
   insights: Insight[];
   cutPotential: CutPotentialResult;
   goalTrajectories: GoalTrajectory[];
@@ -92,6 +102,8 @@ export function DashboardView(props: {
     openDebtsTotal,
     netWorth,
     recent,
+    allTransactions,
+    triage,
     insights,
     cutPotential,
     goalTrajectories,
@@ -156,6 +168,8 @@ export function DashboardView(props: {
         goals={goals}
       />
 
+      <PwaInstallNudge />
+
       <StatCard
         hero
         title="Disponibilità"
@@ -195,13 +209,17 @@ export function DashboardView(props: {
       {currencyGroups.length > 1 && (
         <div className="mf-surface p-4 space-y-2">
           <p className="text-sm font-medium">Saldi per valuta</p>
+          <p className="text-xs text-muted-foreground">
+            Nessuna conversione automatica: la Disponibilità sopra è solo{" "}
+            {availabilityCurrency}.
+          </p>
           <ul className="space-y-1.5">
             {currencyGroups.map((g) => (
               <li
                 key={g.currency}
                 className="flex items-center justify-between text-sm"
               >
-                <span className="text-muted-foreground">{g.currency}</span>
+                <span className="font-medium tabular-nums">{g.currency}</span>
                 <MoneyValue amount={g.total} currency={g.currency} size="sm" />
               </li>
             ))}
@@ -212,24 +230,31 @@ export function DashboardView(props: {
       {openDebtsTotal > 0 && (
         <div className="mf-surface px-4 py-3 flex flex-wrap items-center justify-between gap-2 text-sm">
           <span className="text-muted-foreground">
-            Netto (disponibilità − debiti)
+            Netto {availabilityCurrency} (disponibilità − debiti)
           </span>
           <MoneyValue
             amount={netWorth}
+            currency={availabilityCurrency}
             size="sm"
             tone={netWorth >= 0 ? "success" : "danger"}
           />
         </div>
       )}
 
+      <HomeTriage {...triage} />
+
       <QuickActions actions={quickActions} />
 
       <DashboardSyncStatus />
 
+      <SyncReviewQueue transactions={allTransactions} compact />
+
+      <div id="prossimi-pagamenti">{props.upcoming}</div>
+
       <section className="space-y-3">
         <SectionHeader
           title={monthLabel.charAt(0).toUpperCase() + monthLabel.slice(1)}
-          description="Andamento del mese in corso"
+          description={`Riepilogo in ${availabilityCurrency} · pending esclusi`}
           href="/statistics"
           linkLabel="Statistiche"
         />
@@ -258,8 +283,6 @@ export function DashboardView(props: {
           />
         </div>
       </section>
-
-      {props.upcoming}
 
       <section className="mf-surface p-4 sm:p-5 space-y-3">
         <SectionHeader

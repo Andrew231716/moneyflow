@@ -19,6 +19,15 @@ export interface UpcomingPaymentItem {
   /** How many past months/hits informed the prediction */
   occurrence_count?: number;
   href?: string;
+  /** Confirmed recurring row id (without prefix) */
+  recurring_id?: string;
+  /** Debt row id */
+  debt_id?: string;
+  /** Seed fields for confirming a prediction */
+  account_id?: string;
+  category_id?: string | null;
+  detection_key?: string;
+  frequency?: RecurringTransaction["frequency"];
 }
 
 export interface BuildUpcomingPaymentsParams {
@@ -81,6 +90,10 @@ export function buildUpcomingPayments(
       currency: item.account?.currency,
       source: "recurring",
       href: "/recurring",
+      recurring_id: item.id,
+      account_id: item.account_id,
+      category_id: item.category_id,
+      frequency: item.frequency,
     });
   }
 
@@ -95,6 +108,7 @@ export function buildUpcomingPayments(
       amount: Number(item.amount),
       source: "debt",
       href: "/debts",
+      debt_id: item.id,
     });
   }
 
@@ -118,6 +132,10 @@ export function buildUpcomingPayments(
         confidence: d.confidence,
         occurrence_count: d.occurrence_count,
         href: "/recurring",
+        account_id: d.account_id,
+        category_id: d.suggested_category_id,
+        detection_key: d.id,
+        frequency: d.frequency,
       });
     }
   }

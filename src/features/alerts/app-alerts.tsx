@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { AlertTriangle, BellRing, Target } from "lucide-react";
 import type { BudgetProgress, Goal } from "@/types/database";
@@ -8,6 +9,12 @@ import { isGoalSettled } from "@/lib/finance/engine";
 import { formatCurrency } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import type { BankConsentAlert } from "@/features/alerts/build-consent-alerts";
+import {
+  getConsentNotifyPreference,
+  maybeNotifyConsentExpiry,
+  requestConsentNotifyPermission,
+} from "@/lib/notifications/consent-reminders";
+import { toast } from "sonner";
 
 export type { BankConsentAlert };
 
@@ -20,6 +27,24 @@ export function AppAlerts({
   budgetProgress: BudgetProgress[];
   goals: Goal[];
 }) {
+  const [notifyPref, setNotifyPref] = useState<
+    NotificationPermission | "unsupported" | null
+  >(null);
+
+  useEffect(() => {
+    setNotifyPref(getConsentNotifyPreference());
+  }, []);
+
+  useEffect(() => {
+    if (consentAlerts.length === 0) return;
+    const first = consentAlerts[0]!;
+    maybeNotifyConsentExpiry({
+      institutionName: first.institution_name,
+      expired: first.consent_expired,
+      daysLeft: first.daysLeft,
+    });
+  }, [consentAlerts]);
+
   const overBudgets = budgetProgress.filter(
     (b) => b.state === "over" || b.state === "critical"
   );
@@ -40,9 +65,27 @@ export function AppAlerts({
     return null;
   }
 
+  async function enableNotify() {
+    const result = await requestConsentNotifyPermission();
+    setNotifyPref(result);
+    if (result === "granted") {
+      toast.success("Promemoria consenso attivati");
+      const first = consentAlerts[0];
+      if (first) {
+        maybeNotifyConsentExpiry({
+          institutionName: first.institution_name,
+          expired: first.consent_expired,
+          daysLeft: first.daysLeft,
+        });
+      }
+    } else if (result === "denied") {
+      toast.message("Notifiche bloccate dal browser");
+    }
+  }
+
   return (
     <section className="space-y-2" aria-label="Avvisi">
-      {consentAlerts.map((c) => (
+      {consentAlerts.map((c, index) => (
         <div
           key={c.id}
           className="mf-surface flex flex-col gap-2 p-3 sm:flex-row sm:items-center sm:justify-between border border-warning/30 bg-warning/5"
@@ -63,9 +106,23 @@ export function AppAlerts({
               </p>
             </div>
           </div>
-          <Button asChild size="sm" variant="outline" className="min-h-touch shrink-0">
-            <Link href="/accounts/connect-bank">Ricollega</Link>
-          </Button>
+          <div className="flex flex-wrap gap-2 shrink-0">
+            {index === 0 &&
+              notifyPref !== "unsupported" &&
+              notifyPref !== "granted" && (
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  className="min-h-touch"
+                  onClick={() => void enableNotify()}
+                >
+                  Attiva promemoria
+                </Button>
+              )}
+            <Button asChild size="sm" variant="outline" className="min-h-touch">
+              <Link href="/accounts/connect-bank">Ricollega</Link>
+            </Button>
+          </div>
         </div>
       ))}
 
@@ -84,8 +141,9 @@ export function AppAlerts({
                   {name}
                 </p>
                 <p className="text-xs text-muted-foreground">
-                  {formatCurrency(b.spent)} su {formatCurrency(Number(b.budget.amount))} (
-                  {b.percent.toFixed(0)}%)
+                  {formatCurrency(b.spent)} su{" "}
+                  {formatCurrency(Number(b.budget.amount))} ({b.percent.toFixed(0)}
+                  %)
                 </p>
               </div>
             </div>

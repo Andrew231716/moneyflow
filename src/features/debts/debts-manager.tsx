@@ -110,6 +110,55 @@ export function DebtsManager({ debts }: { debts: Debt[] }) {
     }
   }
 
+  async function payPartial(d: Debt) {
+    const raw = window.prompt(
+      `Quanto hai pagato di «${d.name}»? (resto ${formatCurrency(Number(d.amount))})`,
+      ""
+    );
+    if (raw == null) return;
+    const paid = Number.parseFloat(raw.replace(",", "."));
+    if (!Number.isFinite(paid) || paid <= 0) {
+      toast.error("Importo non valido");
+      return;
+    }
+    const remaining = Math.round((Number(d.amount) - paid) * 100) / 100;
+    const supabase = createClient();
+    if (remaining <= 0) {
+      const note = [d.notes, `Saldato con ultimo pagamento ${formatCurrency(paid)}`]
+        .filter(Boolean)
+        .join(" · ");
+      const { error } = await supabase
+        .from("debts")
+        .update({
+          amount: 0,
+          paid_at: new Date().toISOString(),
+          notes: note || null,
+        })
+        .eq("id", d.id);
+      if (error) toast.error(error.message);
+      else {
+        toast.success("Debito saldato");
+        router.refresh();
+      }
+      return;
+    }
+    const note = [
+      d.notes,
+      `Pagato ${formatCurrency(paid)} il ${new Date().toLocaleDateString("it-IT")}`,
+    ]
+      .filter(Boolean)
+      .join(" · ");
+    const { error } = await supabase
+      .from("debts")
+      .update({ amount: remaining, notes: note })
+      .eq("id", d.id);
+    if (error) toast.error(error.message);
+    else {
+      toast.success(`Resta ${formatCurrency(remaining)}`);
+      router.refresh();
+    }
+  }
+
   async function remove(d: Debt) {
     if (!confirm(`Eliminare «${d.name}»?`)) return;
     const supabase = createClient();
@@ -163,6 +212,7 @@ export function DebtsManager({ debts }: { debts: Debt[] }) {
                     debt={d}
                     onEdit={() => openEdit(d)}
                     onPaid={() => void markPaid(d)}
+                    onPartial={() => void payPartial(d)}
                     onDelete={() => void remove(d)}
                   />
                 ))}
@@ -248,47 +298,59 @@ function DebtRow({
   debt,
   onEdit,
   onPaid,
+  onPartial,
   onDelete,
 }: {
   debt: Debt;
   onEdit: () => void;
   onPaid?: () => void;
+  onPartial?: () => void;
   onDelete: () => void;
 }) {
   const open = isDebtOpen(debt);
   return (
-    <li className="mf-surface flex flex-wrap items-center justify-between gap-3 p-4">
-      <div className="min-w-0 space-y-0.5">
-        <p className="font-medium truncate">{debt.name}</p>
-        {debt.notes && (
-          <p className="text-xs text-muted-foreground line-clamp-1">{debt.notes}</p>
-        )}
-        {!open && debt.paid_at && (
-          <p className="text-[11px] text-muted-foreground">
-            Saldato · {formatCurrency(Number(debt.amount))}
-          </p>
-        )}
-      </div>
-      <div className="flex items-center gap-2 shrink-0">
+    <li className="mf-surface space-y-3 p-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="min-w-0 space-y-0.5">
+          <p className="font-medium truncate">{debt.name}</p>
+          {debt.due_date && open && (
+            <p className="text-xs text-muted-foreground">
+              Scadenza {debt.due_date.split("-").reverse().join("/")}
+            </p>
+          )}
+          {debt.notes && (
+            <p className="text-xs text-muted-foreground line-clamp-2">{debt.notes}</p>
+          )}
+          {!open && debt.paid_at && (
+            <p className="text-[11px] text-muted-foreground">Saldato</p>
+          )}
+        </div>
         <MoneyValue
           amount={Number(debt.amount)}
           size="sm"
           tone={open ? "danger" : "default"}
         />
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
+        {open && onPartial && (
+          <Button size="sm" variant="outline" className="min-h-touch" onClick={onPartial}>
+            Paga parziale
+          </Button>
+        )}
+        {open && onPaid && (
+          <Button size="sm" variant="secondary" className="min-h-touch" onClick={onPaid}>
+            Saldato
+          </Button>
+        )}
         <Button
           size="icon"
           variant="ghost"
-          className="min-h-touch min-w-touch"
+          className="min-h-touch min-w-touch ml-auto"
           aria-label="Modifica"
           onClick={onEdit}
         >
           <Pencil className="h-4 w-4" />
         </Button>
-        {open && onPaid && (
-          <Button size="sm" variant="outline" className="min-h-touch" onClick={onPaid}>
-            Saldato
-          </Button>
-        )}
         <Button
           size="icon"
           variant="ghost"

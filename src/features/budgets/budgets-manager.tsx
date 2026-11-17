@@ -251,8 +251,8 @@ export function BudgetsManager({
         title="Budget"
         description={
           isCurrentMonth
-            ? `Limiti di spesa per ${capitalizedLabel} — puoi modificare o eliminare`
-            : `Storico ${capitalizedLabel} — confronto limiti vs spese di quel mese`
+            ? `Limiti in EUR per ${capitalizedLabel} · i pending non contano`
+            : `Storico ${capitalizedLabel} · confronto limiti vs spese (EUR)`
         }
         actions={
           <div className="flex flex-wrap gap-2">

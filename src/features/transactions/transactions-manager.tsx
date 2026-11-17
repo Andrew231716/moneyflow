@@ -38,6 +38,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { TransferSuggestions } from "@/features/transactions/transfer-suggestions";
+import { SyncReviewQueue } from "@/features/transactions/sync-review-queue";
 import {
   PageHeader,
   TransactionItem,
@@ -62,6 +63,7 @@ export function TransactionsManager({
   const searchParams = useSearchParams();
   const [filter, setFilter] = useState<"all" | TransactionType | "pending">("all");
   const [categoryFilter, setCategoryFilter] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Transaction | null>(null);
   const [txType, setTxType] = useState<TransactionType>("expense");
@@ -131,10 +133,15 @@ export function TransactionsManager({
     }
     const cat = searchParams.get("category");
     if (searchParams.get("pending") === "1") setFilter("pending");
-    if (cat) {
+    if (cat === "uncategorized") {
+      setCategoryFilter("uncategorized");
+      setFilter("all");
+    } else if (cat) {
       setCategoryFilter(cat);
       setFilter("expense");
     }
+    const q = searchParams.get("q");
+    if (q) setSearchQuery(q);
   }, [searchParams, router]);
 
   const pendingCount = useMemo(
@@ -160,9 +167,26 @@ export function TransactionsManager({
           : t.category_id === categoryFilter
       );
     }
+    const needle = searchQuery.trim().toLowerCase();
+    if (needle) {
+      list = list.filter((t) => {
+        const hay = [
+          t.description,
+          t.merchant,
+          t.original_description,
+          t.original_merchant,
+          t.notes,
+          t.category?.name,
+        ]
+          .filter(Boolean)
+          .join(" ")
+          .toLowerCase();
+        return hay.includes(needle);
+      });
+    }
     const month = searchParams.get("month");
     return month ? list.filter((item) => item.date.startsWith(`${month}-`)) : list;
-  }, [transactions, filter, categoryFilter, searchParams]);
+  }, [transactions, filter, categoryFilter, searchParams, searchQuery]);
 
   function openEdit(tx: Transaction) {
     if (tx.type === "transfer") {
@@ -362,7 +386,24 @@ export function TransactionsManager({
         }
       />
 
+      <SyncReviewQueue transactions={transactions} />
+
       <TransferSuggestions transactions={transactions} />
+
+      <div className="relative">
+        <Input
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          placeholder="Cerca merchant, descrizione, note…"
+          className="min-h-touch"
+          aria-label="Cerca movimenti"
+        />
+        {searchQuery && (
+          <p className="mt-1 text-xs text-muted-foreground">
+            {filtered.length} risultat{filtered.length === 1 ? "o" : "i"}
+          </p>
+        )}
+      </div>
 
       <Tabs
         value={filter}
@@ -390,10 +431,11 @@ export function TransactionsManager({
           onClick={() => { setCategoryFilter("uncategorized"); setFilter("all"); }}>
           Senza categoria
         </Button>
-        {(categoryFilter || filter !== "all") && (
+        {(categoryFilter || filter !== "all" || searchQuery) && (
           <Button size="sm" variant="ghost" onClick={() => {
             setCategoryFilter(null);
             setFilter("all");
+            setSearchQuery("");
             router.replace("/transactions", { scroll: false });
           }}>Azzera filtri</Button>
         )}
