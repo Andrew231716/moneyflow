@@ -3,6 +3,7 @@ import { hasSupabaseEnv } from "@/lib/supabase/env";
 import {
   fetchAccounts,
   fetchBudgets,
+  fetchCategories,
   fetchDebts,
   fetchGoals,
   fetchRecurring,
@@ -28,6 +29,8 @@ import {
 } from "@/lib/finance/currency";
 import { rankCutPotential } from "@/lib/finance/cut-potential";
 import { calcGoalTrajectories } from "@/lib/finance/goal-trajectory";
+import { buildUpcomingPayments } from "@/lib/finance/upcoming-payments";
+import { countSyncReviewItems } from "@/features/transactions/sync-review-queue";
 import { buildConsentAlerts } from "@/features/alerts/build-consent-alerts";
 import { listBankConnectionsForAlerts } from "@/features/open-banking/list-connections";
 import { createClient } from "@/lib/supabase/server";
@@ -45,21 +48,30 @@ export default async function DashboardPage() {
     data: { user },
   } = await supabase.auth.getUser();
 
-  const [accounts, transactions, budgets, goals, recurring, debts, connections] =
-    await Promise.all([
-      fetchAccounts(),
-      fetchTransactions(12),
-      fetchBudgets(),
-      fetchGoals(),
-      fetchRecurring(),
-      fetchDebts(),
-      user
-        ? listBankConnectionsForAlerts({
-            supabase,
-            userId: user.id,
-          }).catch(() => [])
-        : Promise.resolve([]),
-    ]);
+  const [
+    accounts,
+    transactions,
+    budgets,
+    goals,
+    recurring,
+    debts,
+    categories,
+    connections,
+  ] = await Promise.all([
+    fetchAccounts(),
+    fetchTransactions(12),
+    fetchBudgets(),
+    fetchGoals(),
+    fetchRecurring(),
+    fetchDebts(),
+    fetchCategories(),
+    user
+      ? listBankConnectionsForAlerts({
+          supabase,
+          userId: user.id,
+        }).catch(() => [])
+      : Promise.resolve([]),
+  ]);
 
   const now = new Date();
   const summary = calcMonthSummary(transactions, now);
@@ -94,11 +106,29 @@ export default async function DashboardPage() {
   );
   const consentAlerts = buildConsentAlerts(connections);
   const currencyGroups = groupBalancesByCurrency(accounts);
+  const review = countSyncReviewItems(transactions);
+  const predictedCount = buildUpcomingPayments({
+    recurring,
+    debts,
+    transactions,
+    includePredicted: true,
+    asOf: now,
+    limit: 20,
+  }).filter((i) => i.source === "predicted").length;
 
   return (
     <AppShell title="Home">
       <DashboardView
-        upcoming={<UpcomingPayments recurring={recurring} debts={debts} />}
+        upcoming={
+          <UpcomingPayments
+            recurring={recurring}
+            debts={debts}
+            transactions={transactions}
+            accounts={accounts}
+            categories={categories}
+            forecast={forecast}
+          />
+        }
         availability={availability}
         availabilityCurrency={primary.currency}
         currencyGroups={currencyGroups}
@@ -114,7 +144,13 @@ export default async function DashboardPage() {
         openDebtsTotal={openDebtsTotal}
         netWorth={netWorth}
         recent={recent}
-        forecast={forecast}
+        allTransactions={transactions}
+        triage={{
+          pendingCount: review.pending,
+          uncategorizedCount: review.uncategorized,
+          predictedCount,
+          transferPairCount: review.transfers,
+        }}
         insights={insights}
         cutPotential={cutPotential}
         goalTrajectories={goalTrajectories.slice(0, 3)}

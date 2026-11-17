@@ -251,8 +251,8 @@ export function BudgetsManager({
         title="Budget"
         description={
           isCurrentMonth
-            ? `Limiti di spesa per ${capitalizedLabel} — puoi modificare o eliminare`
-            : `Storico ${capitalizedLabel} — confronto limiti vs spese di quel mese`
+            ? `Limiti in EUR per ${capitalizedLabel} · i pending non contano`
+            : `Storico ${capitalizedLabel} · confronto limiti vs spese (EUR)`
         }
         actions={
           <div className="flex flex-wrap gap-2">
@@ -274,7 +274,7 @@ export function BudgetsManager({
         }
       />
 
-      <div className="mf-surface flex items-center justify-between gap-2 px-2 py-1.5">
+      <div className="mf-surface-lift flex items-center justify-between gap-2 px-2 py-2">
         {canGoPrev ? (
           <Button asChild variant="ghost" size="sm" className="min-h-touch px-2">
             <Link href={hrefForMonth(prevMonth)} aria-label="Mese precedente">

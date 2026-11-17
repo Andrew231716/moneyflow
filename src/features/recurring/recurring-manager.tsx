@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Pencil, Trash2, Repeat } from "lucide-react";
+import { Check, Pencil, Trash2, Repeat, SkipForward } from "lucide-react";
 import { toast } from "sonner";
 import type {
   Account,
@@ -13,6 +13,7 @@ import type {
 } from "@/types/database";
 import { createClient } from "@/lib/supabase/client";
 import { calcRecurringTotals } from "@/lib/finance/engine";
+import { advanceRecurringDueDate } from "@/lib/finance/recurring-actions";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -280,6 +281,29 @@ export function RecurringManager({
     }
   }
 
+  async function markPaidOrSkip(item: RecurringTransaction, kind: "paid" | "skip") {
+    setDeletingId(item.id);
+    try {
+      const supabase = createClient();
+      const nextDue = advanceRecurringDueDate(item);
+      const { error } = await supabase
+        .from("recurring_transactions")
+        .update({ next_due_date: nextDue })
+        .eq("id", item.id);
+      if (error) throw error;
+      toast.success(
+        kind === "paid"
+          ? `Segnato pagato · prossimo ${nextDue}`
+          : `Saltato · prossimo ${nextDue}`
+      );
+      router.refresh();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Errore");
+    } finally {
+      setDeletingId(null);
+    }
+  }
+
   function applyExample(ex: (typeof RECURRING_EXAMPLES)[number]) {
     void (async () => {
       let categoryId = "";
@@ -341,25 +365,22 @@ export function RecurringManager({
         }
       />
 
-      <div className="mf-surface p-4 space-y-2 text-sm">
-        <div className="flex flex-wrap gap-4">
-          <div>
-            <p className="text-xs text-muted-foreground">Mensile netto</p>
-            <MoneyValue
-              amount={totals.monthly}
-              size="md"
-              tone={totals.monthly >= 0 ? "success" : "danger"}
-            />
-          </div>
-          <div>
-            <p className="text-xs text-muted-foreground">Annuo</p>
-            <MoneyValue amount={totals.yearly} size="md" />
-          </div>
+      <div className="mf-surface-lift grid grid-cols-2 gap-3 p-4 sm:gap-6">
+        <div>
+          <p className="text-xs text-muted-foreground">Mensile netto</p>
+          <MoneyValue
+            amount={totals.monthly}
+            size="lg"
+            tone={totals.monthly >= 0 ? "success" : "danger"}
+          />
         </div>
-        <p className="text-xs text-muted-foreground leading-relaxed">
-          Alla data di scadenza MoneyFlow <strong>non</strong> accredita né
-          addebita il conto indicato: i ricorrenti servono per previsioni a fine
-          mese e per ricordarti le uscite/entrate fisse.
+        <div>
+          <p className="text-xs text-muted-foreground">Impatto annuo</p>
+          <MoneyValue amount={totals.yearly} size="lg" />
+        </div>
+        <p className="col-span-2 text-xs text-muted-foreground leading-relaxed">
+          I ricorrenti non spostano soldi da soli: servono per previsioni e
+          scadenze sulla Home.
         </p>
       </div>
 
@@ -389,17 +410,17 @@ export function RecurringManager({
             {items.map((r) => (
               <div
                 key={r.id}
-                className="mf-surface flex items-center justify-between gap-3 p-4"
+                className="mf-surface space-y-3 p-4"
               >
-                <div className="min-w-0">
-                  <p className="font-medium truncate">{r.description}</p>
-                  <p className="text-xs text-muted-foreground mt-0.5">
-                    Prossimo: {r.next_due_date} · {r.account?.name}
-                    {r.category?.name ? ` · ${r.category.name}` : ""}
-                  </p>
-                </div>
-                <div className="flex items-center gap-1 shrink-0">
-                  <div className="text-right space-y-1 mr-1">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="font-medium truncate">{r.description}</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      Prossimo: {r.next_due_date} · {r.account?.name}
+                      {r.category?.name ? ` · ${r.category.name}` : ""}
+                    </p>
+                  </div>
+                  <div className="text-right space-y-1 shrink-0">
                     <MoneyValue
                       amount={Number(r.amount)}
                       size="sm"
@@ -407,11 +428,39 @@ export function RecurringManager({
                     />
                     <Badge variant="secondary">{freqLabels[r.frequency]}</Badge>
                   </div>
+                </div>
+                <div className="flex flex-wrap items-center gap-1">
+                  {r.is_active && (
+                    <>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        className="min-h-touch"
+                        disabled={deletingId === r.id}
+                        onClick={() => void markPaidOrSkip(r, "paid")}
+                      >
+                        <Check className="size-3.5" />
+                        Segna pagato
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="ghost"
+                        className="min-h-touch"
+                        disabled={deletingId === r.id}
+                        onClick={() => void markPaidOrSkip(r, "skip")}
+                      >
+                        <SkipForward className="size-3.5" />
+                        Salta
+                      </Button>
+                    </>
+                  )}
                   <Button
                     type="button"
                     size="icon"
                     variant="ghost"
-                    className="size-9 min-h-touch min-w-touch"
+                    className="size-9 min-h-touch min-w-touch ml-auto"
                     aria-label={`Modifica ${r.description}`}
                     onClick={() => openEdit(r)}
                   >
