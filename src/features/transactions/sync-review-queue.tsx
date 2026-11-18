@@ -4,48 +4,9 @@ import Link from "next/link";
 import { useMemo } from "react";
 import { ClipboardList } from "lucide-react";
 import type { Transaction } from "@/types/database";
+import { countSyncReviewItems } from "@/lib/finance/sync-review";
 import { SectionHeader } from "@/components/money";
 import { Button } from "@/components/ui/button";
-
-function countTransferPairs(transactions: Transaction[]): number {
-  const byId = new Map(transactions.map((t) => [t.id, t]));
-  const seen = new Set<string>();
-  let n = 0;
-  for (const tx of transactions) {
-    if (!tx.possible_transfer_match_id || tx.type === "transfer") continue;
-    const other = byId.get(tx.possible_transfer_match_id);
-    if (!other || other.type === "transfer") continue;
-    const key = [tx.id, other.id].sort().join(":");
-    if (seen.has(key)) continue;
-    seen.add(key);
-    n += 1;
-  }
-  return n;
-}
-
-export function countSyncReviewItems(transactions: Transaction[]): {
-  pending: number;
-  uncategorized: number;
-  transfers: number;
-  total: number;
-} {
-  const pending = transactions.filter(
-    (t) => (t.booking_status ?? "booked") === "pending"
-  ).length;
-  const uncategorized = transactions.filter(
-    (t) =>
-      t.type !== "transfer" &&
-      !t.category_id &&
-      (t.booking_status ?? "booked") !== "pending"
-  ).length;
-  const transfers = countTransferPairs(transactions);
-  return {
-    pending,
-    uncategorized,
-    transfers,
-    total: pending + uncategorized + transfers,
-  };
-}
 
 /** Compact post-sync triage block for Home / Movimenti. */
 export function SyncReviewQueue({
