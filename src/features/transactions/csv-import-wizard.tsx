@@ -20,6 +20,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
+import { ExpandableText } from "@/components/money";
 import { formatCurrency, parseAmount } from "@/lib/utils";
 
 type Step = "upload" | "map" | "preview" | "confirm";
@@ -256,10 +257,12 @@ export function CsvImportWizard({
               {mapped.slice(0, 50).map((r, i) => (
                 <div key={i} className="flex items-center justify-between gap-2 px-3 py-2 text-sm">
                   <div className="min-w-0">
-                    <p className="truncate font-medium">
-                      {r.description}{" "}
+                    <div className="flex flex-wrap items-center gap-1.5 min-w-0">
+                      <ExpandableText className="font-medium min-w-0">
+                        {r.description}
+                      </ExpandableText>
                       {r.duplicate && <Badge variant="warning">duplicato</Badge>}
-                    </p>
+                    </div>
                     <p className="text-xs text-muted-foreground">{r.date}</p>
                   </div>
                   <span className={r.type === "income" ? "text-success" : "text-destructive"}>

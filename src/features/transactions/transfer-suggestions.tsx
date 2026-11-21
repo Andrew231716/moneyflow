@@ -6,6 +6,7 @@ import { ArrowLeftRight } from "lucide-react";
 import { toast } from "sonner";
 import type { Transaction } from "@/types/database";
 import { formatCurrency } from "@/lib/utils";
+import { ExpandableText } from "@/components/money";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -90,13 +91,13 @@ export function TransferSuggestions({
             <div className="min-w-0 space-y-1 text-sm">
               <div className="flex flex-wrap items-center gap-2">
                 <Badge variant="secondary">{a.date}</Badge>
-                <span className="truncate font-medium">
+                <ExpandableText className="font-medium min-w-0">
                   {a.description || a.merchant || "Movimento A"}
-                </span>
+                </ExpandableText>
                 <span className="text-muted-foreground">↔</span>
-                <span className="truncate font-medium">
+                <ExpandableText className="font-medium min-w-0">
                   {b.description || b.merchant || "Movimento B"}
-                </span>
+                </ExpandableText>
               </div>
               <p className="text-xs text-muted-foreground">
                 {formatCurrency(Number(a.amount))} · conti{" "}

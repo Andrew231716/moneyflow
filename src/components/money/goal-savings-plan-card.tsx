@@ -6,6 +6,7 @@ import type { GoalSavingsPlan } from "@/lib/finance/goal-savings-plan";
 import { formatCurrency } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { MoneyValue } from "./money-value";
+import { ExpandableText } from "./expandable-text";
 
 export function GoalSavingsPlanCard({
   plan,
@@ -59,7 +60,9 @@ export function GoalSavingsPlanCard({
               className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-muted/40 px-3 py-2 text-sm"
             >
               <div className="min-w-0">
-                <p className="font-medium truncate">{tip.categoryName}</p>
+                <ExpandableText className="font-medium">
+                  {tip.categoryName}
+                </ExpandableText>
                 <p className="text-[11px] text-muted-foreground">
                   Spesi {formatCurrency(tip.spent)} · {tip.comparisonLabel}
                 </p>

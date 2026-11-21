@@ -22,7 +22,7 @@ import type {
   Transaction,
 } from "@/types/database";
 import { createClient } from "@/lib/supabase/client";
-import { MoneyValue, SectionHeader } from "@/components/money";
+import { ExpandableText, MoneyValue, SectionHeader } from "@/components/money";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -303,7 +303,9 @@ export function UpcomingPayments({
                         </span>
                       </div>
                       <div className="min-w-0 space-y-1">
-                        <p className="font-medium truncate">{item.title}</p>
+                        <ExpandableText className="font-medium">
+                          {item.title}
+                        </ExpandableText>
                         <div className="flex flex-wrap items-center gap-1.5">
                           <Badge
                             variant="outline"
@@ -434,7 +436,9 @@ export function UpcomingPayments({
                 key={item.id}
                 className="flex items-center justify-between gap-2"
               >
-                <span className="truncate">{item.name}</span>
+                <ExpandableText className="min-w-0 flex-1">
+                  {item.name}
+                </ExpandableText>
                 <MoneyValue amount={Number(item.amount)} size="sm" tone="danger" />
               </li>
             ))}

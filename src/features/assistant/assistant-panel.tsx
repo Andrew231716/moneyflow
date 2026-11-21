@@ -40,6 +40,7 @@ import {
   writeAudit,
 } from "@/lib/data/mutations";
 import { formatCurrency, toMonthStart } from "@/lib/utils";
+import { ExpandableText } from "@/components/money";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -967,9 +968,9 @@ export function AssistantPanel({
                       key={`${m.id}-${line.label}`}
                       className="flex items-center justify-between gap-3 text-xs"
                     >
-                      <span className="text-muted-foreground truncate">
+                      <ExpandableText className="text-muted-foreground min-w-0 flex-1">
                         {line.label}
-                      </span>
+                      </ExpandableText>
                       <span className="font-medium tabular-nums shrink-0">
                         {formatCurrency(line.amount)}
                       </span>

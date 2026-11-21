@@ -8,6 +8,7 @@ import { EmptyState } from "./empty-state";
 import { SectionHeader } from "./section-header";
 import { MoneyValue } from "./money-value";
 import { StatusBadge } from "./status-badge";
+import { ExpandableText } from "./expandable-text";
 
 function TipRow({ tip }: { tip: CutPotentialTip }) {
   return (
@@ -19,7 +20,9 @@ function TipRow({ tip }: { tip: CutPotentialTip }) {
             style={{ background: tip.color }}
             aria-hidden
           />
-          <h3 className="font-medium text-sm truncate">{tip.categoryName}</h3>
+          <ExpandableText as="p" className="font-medium text-sm">
+            {tip.categoryName}
+          </ExpandableText>
         </div>
         <MoneyValue amount={tip.spent} size="sm" tone="danger" />
       </div>

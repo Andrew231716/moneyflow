@@ -3,6 +3,7 @@ import { cn } from "@/lib/utils";
 import type { Transaction } from "@/types/database";
 import { MoneyValue } from "./money-value";
 import { StatusBadge } from "./status-badge";
+import { ExpandableText } from "./expandable-text";
 
 export function TransactionItem({
   transaction: tx,
@@ -33,13 +34,17 @@ export function TransactionItem({
           <ArrowLeftRight className="h-4 w-4 mt-0.5 text-muted-foreground shrink-0" />
         )}
         <div className="min-w-0">
-          <div className="flex flex-wrap items-center gap-1.5">
-            <p className="truncate text-sm font-medium">{tx.description || "—"}</p>
+          <div className="flex flex-wrap items-center gap-1.5 min-w-0">
+            <ExpandableText className="text-sm font-medium min-w-0 flex-1">
+              {tx.description || "—"}
+            </ExpandableText>
             {pending && (
               <StatusBadge tone="warning">Non contabilizzato</StatusBadge>
             )}
           </div>
-          <p className="text-xs text-muted-foreground truncate">{meta}</p>
+          <ExpandableText className="text-xs text-muted-foreground">
+            {meta}
+          </ExpandableText>
         </div>
       </div>
       <MoneyValue

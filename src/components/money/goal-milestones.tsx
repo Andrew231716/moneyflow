@@ -6,6 +6,7 @@ import { cn, formatCurrency } from "@/lib/utils";
 import type { GoalTrajectory } from "@/lib/finance/goal-trajectory";
 import { StatusBadge } from "./status-badge";
 import { MoneyValue } from "./money-value";
+import { ExpandableText } from "./expandable-text";
 import { Progress } from "@/components/ui/progress";
 
 const statusTone: Record<
@@ -104,10 +105,10 @@ export function GoalTrajectoryCard({
     <div className={cn("mf-surface p-4 space-y-3", className)}>
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0 space-y-1">
-          <p className="font-medium truncate flex items-center gap-1.5">
+          <div className="font-medium flex items-center gap-1.5 min-w-0">
             <PiggyBank className="h-4 w-4 text-primary shrink-0" aria-hidden />
-            {trajectory.goalName}
-          </p>
+            <ExpandableText className="min-w-0">{trajectory.goalName}</ExpandableText>
+          </div>
           <p className="text-xs text-muted-foreground">
             Mancano <MoneyValue amount={trajectory.remaining} size="sm" className="text-xs inline" />
             {trajectory.deadline
