@@ -38,7 +38,7 @@ export interface BuildUpcomingPaymentsParams {
   includePredicted?: boolean;
   /** Max days ahead to keep (default 60) */
   horizonDays?: number;
-  /** Min confidence for predicted items (default 0.5) */
+  /** Min confidence for predicted items (default 0.4) */
   minConfidence?: number;
   asOf?: Date;
   limit?: number;
@@ -68,7 +68,7 @@ export function buildUpcomingPayments(
     transactions = [],
     includePredicted = true,
     horizonDays = 60,
-    minConfidence = 0.5,
+    minConfidence = 0.4,
     asOf = new Date(),
     limit = 12,
   } = params;
@@ -116,7 +116,7 @@ export function buildUpcomingPayments(
     const detections = detectRecurringFromHistory(transactions, recurring, {
       types: ["expense"],
       asOf,
-      minOccurrences: 3,
+      minOccurrences: 2,
     });
     for (const d of detections) {
       if (d.confidence < minConfidence) continue;

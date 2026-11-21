@@ -200,7 +200,7 @@ describe("detectRecurringFromHistory", () => {
     expect(both.length).toBeGreaterThanOrEqual(2);
   });
 
-  it("excludes pending bank rows", () => {
+  it("excludes pending bank rows from the count", () => {
     const txs = [
       baseTx({
         id: "p1",
@@ -215,14 +215,59 @@ describe("detectRecurringFromHistory", () => {
         amount: 29.9,
         date: "2026-09-10",
       }),
+    ];
+    // Only 1 booked → below minOccurrences (2)
+    expect(detectRecurringFromHistory(txs, [], { asOf })).toHaveLength(0);
+  });
+
+  it("detects same amount + same day even with different bank labels", () => {
+    const txs = [
       baseTx({
-        id: "p3",
-        merchant: "Sky",
-        amount: 29.9,
-        date: "2026-10-10",
+        id: "a1",
+        description: "SDD ENEL ENERGIA REF 8891",
+        amount: 87.5,
+        date: "2026-08-15",
+      }),
+      baseTx({
+        id: "a2",
+        description: "ADDEBITO ENEL SERVIZIO ELETTRICO",
+        amount: 87.5,
+        date: "2026-09-16",
+      }),
+      baseTx({
+        id: "a3",
+        merchant: "Enel",
+        description: "PAGAMENTO UTENZA",
+        amount: 87.5,
+        date: "2026-10-15",
       }),
     ];
-    // Only 2 booked → below minOccurrences
-    expect(detectRecurringFromHistory(txs, [], { asOf })).toHaveLength(0);
+    const found = detectRecurringFromHistory(txs, [], { asOf });
+    expect(found.length).toBeGreaterThanOrEqual(1);
+    expect(found[0]!.amount).toBe(87.5);
+    expect(found[0]!.day_of_month).toBeGreaterThanOrEqual(15);
+    expect(found[0]!.day_of_month).toBeLessThanOrEqual(16);
+    expect(found[0]!.next_due_date).toBe("2026-11-15");
+  });
+
+  it("detects with only two monthly hits of the same amount", () => {
+    const txs = [
+      baseTx({
+        id: "r1",
+        description: "AFFITTO VIA ROMA",
+        amount: 750,
+        date: "2026-09-01",
+      }),
+      baseTx({
+        id: "r2",
+        description: "AFFITTO VIA ROMA",
+        amount: 750,
+        date: "2026-10-01",
+      }),
+    ];
+    const found = detectRecurringFromHistory(txs, [], { asOf });
+    expect(found).toHaveLength(1);
+    expect(found[0]!.amount).toBe(750);
+    expect(found[0]!.occurrence_count).toBe(2);
   });
 });

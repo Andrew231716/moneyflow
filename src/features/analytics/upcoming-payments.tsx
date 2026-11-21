@@ -13,6 +13,7 @@ import {
   type UpcomingPaymentSource,
 } from "@/lib/finance/upcoming-payments";
 import { advanceRecurringDueDate } from "@/lib/finance/recurring-actions";
+import { classifyDescription } from "@/lib/finance/classification";
 import type {
   Account,
   Category,
@@ -161,11 +162,17 @@ export function UpcomingPayments({
         accounts.find((a) => a.id === item.account_id)?.id ?? accounts[0]?.id;
       if (!accountId) throw new Error("Nessun conto disponibile");
 
-      const categoryId =
+      let categoryId =
         item.category_id &&
         categories.some((c) => c.id === item.category_id)
           ? item.category_id
           : null;
+      if (!categoryId) {
+        categoryId =
+          classifyDescription(item.title, [], categories, {
+            type: "expense",
+          })?.id ?? null;
+      }
 
       const { error } = await supabase.from("recurring_transactions").insert({
         user_id: user.id,

@@ -20,6 +20,8 @@ import { formatCurrency } from "@/lib/utils";
 import type {
   Account,
   BudgetProgress,
+  Category,
+  ClassificationRule,
   Debt,
   Goal,
   Insight,
@@ -33,7 +35,6 @@ import { DashboardSyncStatus } from "@/features/open-banking/components/dashboar
 import { AppAlerts } from "@/features/alerts/app-alerts";
 import type { BankConsentAlert } from "@/features/alerts/build-consent-alerts";
 import { HomeTriage } from "@/features/analytics/home-triage";
-import { SyncReviewQueue } from "@/features/transactions/sync-review-queue";
 import { PwaInstallNudge } from "@/features/pwa/install-nudge";
 import {
   StatCard,
@@ -41,10 +42,8 @@ import {
   BudgetCard,
   TransactionItem,
   GoalCard,
-  AccountCard,
   InsightCard,
   CutPotentialSection,
-  GoalTrajectoryCard,
   EmptyState,
   SectionHeader,
   QuickActions,
@@ -76,6 +75,8 @@ export function DashboardView(props: {
   netWorth: number;
   recent: Transaction[];
   allTransactions: Transaction[];
+  categories: Category[];
+  rules: ClassificationRule[];
   triage: {
     pendingCount: number;
     uncategorizedCount: number;
@@ -103,6 +104,8 @@ export function DashboardView(props: {
     netWorth,
     recent,
     allTransactions,
+    categories,
+    rules,
     triage,
     insights,
     cutPotential,
@@ -112,6 +115,7 @@ export function DashboardView(props: {
     currencyGroups,
     isEmpty,
   } = props;
+
   const savingsBalance = savingsAccounts
     .filter(
       (a) => (a.currency || "EUR").toUpperCase() === availabilityCurrency
@@ -121,8 +125,8 @@ export function DashboardView(props: {
   const reservedGoals = goals.filter(
     (g) => g.status !== "cancelled" && !g.settled
   );
-  const highlightGoals = reservedGoals.slice(0, 4);
-  const openDebts = debts.filter((d) => !d.paid_at).slice(0, 4);
+  const highlightGoals = reservedGoals.slice(0, 3);
+  const openDebts = debts.filter((d) => !d.paid_at).slice(0, 3);
 
   const router = useRouter();
   const savingsDelta = summary.savings - previousSummary.savings;
@@ -142,12 +146,12 @@ export function DashboardView(props: {
   }).format(new Date());
 
   return (
-    <div className="space-y-5 sm:space-y-6">
+    <div className="space-y-4 sm:space-y-5">
       {isEmpty && (
         <EmptyState
           icon={<Sparkles className="h-6 w-6" />}
           title="Benvenuto in MoneyFlow"
-          description="Aggiungi un conto o carica dati demo per iniziare. Puoi anche collegare una banca."
+          description="Aggiungi un conto o collega la banca per iniziare."
           action={
             <div className="flex flex-wrap justify-center gap-2">
               <Button asChild>
@@ -168,8 +172,6 @@ export function DashboardView(props: {
         goals={goals}
       />
 
-      <PwaInstallNudge />
-
       <StatCard
         hero
         title="Disponibilità"
@@ -178,60 +180,48 @@ export function DashboardView(props: {
         hint={
           [
             currencyGroups.length > 1
-              ? `Solo ${availabilityCurrency} (altre valute separate sotto)`
+              ? `Solo ${availabilityCurrency}`
               : null,
             reservedGoalsTotal > 0 || savingsBalance > 0
               ? [
-                  `Conti ${formatCurrency(liquidBalance, availabilityCurrency)}`,
+                  `Liquidi ${formatCurrency(liquidBalance, availabilityCurrency)}`,
                   savingsBalance > 0
-                    ? `Salvadanaio ${formatCurrency(savingsBalance, availabilityCurrency)}`
+                    ? `Risparmio ${formatCurrency(savingsBalance, availabilityCurrency)}`
                     : null,
                   reservedGoalsTotal > 0
-                    ? `Obiettivi esclusi ${formatCurrency(reservedGoalsTotal)}`
+                    ? `Obiettivi ${formatCurrency(reservedGoalsTotal)}`
                     : null,
                 ]
                   .filter(Boolean)
                   .join(" · ")
-              : "Tutti i conti",
+              : null,
           ]
             .filter(Boolean)
-            .join(" · ") || "Tutti i conti"
+            .join(" · ") || undefined
         }
         trend={{
           label:
             previousSummary.savings === 0 && summary.savings === 0
-              ? "Risparmio mese corrente"
+              ? "Questo mese"
               : `${savingsDeltaPositive ? "+" : ""}${formatCurrency(savingsDelta)} vs mese scorso`,
           positive: savingsDelta === 0 ? undefined : savingsDeltaPositive,
         }}
       />
 
       {currencyGroups.length > 1 && (
-        <div className="mf-surface p-4 space-y-2">
-          <p className="text-sm font-medium">Saldi per valuta</p>
-          <p className="text-xs text-muted-foreground">
-            Nessuna conversione automatica: la Disponibilità sopra è solo{" "}
-            {availabilityCurrency}.
-          </p>
-          <ul className="space-y-1.5">
-            {currencyGroups.map((g) => (
-              <li
-                key={g.currency}
-                className="flex items-center justify-between text-sm"
-              >
-                <span className="font-medium tabular-nums">{g.currency}</span>
-                <MoneyValue amount={g.total} currency={g.currency} size="sm" />
-              </li>
-            ))}
-          </ul>
+        <div className="flex flex-wrap gap-3 text-sm px-1">
+          {currencyGroups.map((g) => (
+            <span key={g.currency} className="text-muted-foreground">
+              {g.currency}{" "}
+              <MoneyValue amount={g.total} currency={g.currency} size="sm" />
+            </span>
+          ))}
         </div>
       )}
 
       {openDebtsTotal > 0 && (
-        <div className="mf-surface px-4 py-3 flex flex-wrap items-center justify-between gap-2 text-sm">
-          <span className="text-muted-foreground">
-            Netto {availabilityCurrency} (disponibilità − debiti)
-          </span>
+        <div className="flex items-center justify-between gap-2 text-sm px-1">
+          <span className="text-muted-foreground">Netto dopo debiti</span>
           <MoneyValue
             amount={netWorth}
             currency={availabilityCurrency}
@@ -241,50 +231,52 @@ export function DashboardView(props: {
         </div>
       )}
 
-      <HomeTriage {...triage} />
+      <HomeTriage
+        {...triage}
+        transactions={allTransactions}
+        categories={categories}
+        rules={rules}
+      />
 
       <QuickActions actions={quickActions} />
-
       <DashboardSyncStatus />
-
-      <SyncReviewQueue transactions={allTransactions} compact />
 
       <div id="prossimi-pagamenti">{props.upcoming}</div>
 
-      <section className="space-y-3">
+      <section className="space-y-2">
         <SectionHeader
           title={monthLabel.charAt(0).toUpperCase() + monthLabel.slice(1)}
-          description={`Riepilogo in ${availabilityCurrency} · pending esclusi`}
+          description="Pending esclusi dal riepilogo"
           href="/statistics"
           linkLabel="Statistiche"
         />
         <div
-          className="grid grid-cols-3 gap-2 sm:gap-3"
+          className="grid grid-cols-3 gap-2"
           aria-label="Riepilogo del mese"
         >
           <StatCard
             title="Entrate"
             value={summary.income}
             tone="success"
-            className="p-3 sm:p-5"
+            className="p-3"
           />
           <StatCard
             title="Uscite"
             value={summary.expense}
             tone="danger"
-            className="p-3 sm:p-5"
+            className="p-3"
           />
           <StatCard
-            title="Differenza"
+            title="Saldo"
             value={summary.savings}
             tone={summary.savings >= 0 ? "success" : "danger"}
             hint={`${summary.savingsRate.toFixed(0)}%`}
-            className="p-3 sm:p-5"
+            className="p-3"
           />
         </div>
       </section>
 
-      <section className="mf-surface p-4 sm:p-5 space-y-3">
+      <section className="mf-surface p-4 space-y-3">
         <SectionHeader
           title="Ultimi movimenti"
           href="/transactions"
@@ -292,131 +284,75 @@ export function DashboardView(props: {
         />
         {recent.length === 0 ? (
           <EmptyState
-            className="border-0 shadow-none py-8"
+            className="border-0 shadow-none py-6"
             icon={<Wallet className="h-5 w-5" />}
             title="Nessun movimento"
-            description="Registra una spesa, importa CSV o sincronizza la banca collegata."
-            action={
-              <div className="flex flex-wrap justify-center gap-2">
-                <Button asChild size="sm">
-                  <Link href="/transactions?new=expense">Nuova spesa</Link>
-                </Button>
-                <Button asChild size="sm" variant="outline">
-                  <Link href="/accounts">Sincronizza banca</Link>
-                </Button>
-              </div>
-            }
+            description="Registra una spesa o sincronizza la banca."
           />
         ) : (
           <div className="divide-y divide-border/60 -mx-1">
-            {recent.map((tx) => (
+            {recent.slice(0, 6).map((tx) => (
               <TransactionItem key={tx.id} transaction={tx} />
             ))}
           </div>
         )}
       </section>
 
-      <div className="grid gap-4 lg:grid-cols-2">
-        <section className="mf-surface p-4 sm:p-5 space-y-3">
-          <SectionHeader
-            title="Budget"
-            description="Progresso del mese"
-            href="/budgets"
-          />
-          {budgetProgress.length === 0 ? (
-            <div className="space-y-3 py-1">
-              <p className="text-sm text-muted-foreground">
-                Nessun budget impostato
-              </p>
-              <Button asChild size="sm" variant="outline" className="min-h-touch">
-                <Link href="/budgets">Imposta dai top spese</Link>
-              </Button>
-            </div>
-          ) : (
-            <div className="grid gap-3 sm:grid-cols-2">
-              {budgetProgress.slice(0, 4).map((b) => (
-                <BudgetCard
-                  key={b.budget.id}
-                  progress={b}
-                  compact
-                  href="/budgets"
-                />
-              ))}
-            </div>
-          )}
-        </section>
-
-        <section className="mf-surface p-4 sm:p-5 space-y-3">
-          <SectionHeader
-            title="Obiettivi"
-            description={
-              reservedGoalsTotal > 0
-                ? `${formatCurrency(reservedGoalsTotal)} accantonati`
-                : "Fuori dalla disponibilità"
-            }
-            href="/goals"
-          />
-          {highlightGoals.length > 0 ? (
-            <div className="space-y-3">
-              {highlightGoals.slice(0, 3).map((g) => (
-                <GoalCard key={g.id} goal={g} compact href="/goals" />
-              ))}
-            </div>
-          ) : (
-            <p className="text-sm text-muted-foreground">
-              Nessun obiettivo attivo
-            </p>
-          )}
-          {goalTrajectories.length > 0 && (
-            <div className="space-y-2 pt-1 border-t border-border/60">
-              {goalTrajectories.slice(0, 2).map((t) => (
-                <GoalTrajectoryCard key={t.goalId} trajectory={t} />
-              ))}
-            </div>
-          )}
-        </section>
-      </div>
-
-      {(savingsAccounts.length > 0 || openDebtsTotal > 0) && (
-        <div className="grid gap-4 lg:grid-cols-2">
-          {savingsAccounts.length > 0 && (
-            <section className="mf-surface p-4 sm:p-5 space-y-3">
-              <SectionHeader
-                title="Salvadanaio"
-                description={`${formatCurrency(savingsBalance)} nei conti risparmio`}
-                href="/accounts"
-                linkLabel="Conti"
-              />
-              <MoneyValue amount={savingsBalance} size="lg" tone="success" />
-              <div className="grid gap-3 sm:grid-cols-2">
-                {savingsAccounts.slice(0, 2).map((a) => (
-                  <AccountCard key={a.id} account={a} href="/accounts" />
+      {(budgetProgress.length > 0 || highlightGoals.length > 0) && (
+        <div className="grid gap-3 sm:grid-cols-2">
+          {budgetProgress.length > 0 && (
+            <section className="mf-surface p-4 space-y-3">
+              <SectionHeader title="Budget" href="/budgets" />
+              <div className="space-y-2">
+                {budgetProgress.slice(0, 3).map((b) => (
+                  <BudgetCard
+                    key={b.budget.id}
+                    progress={b}
+                    compact
+                    href="/budgets"
+                  />
                 ))}
               </div>
             </section>
           )}
-
-          {openDebtsTotal > 0 && (
-            <section className="mf-surface p-4 sm:p-5 space-y-3">
+          {highlightGoals.length > 0 && (
+            <section className="mf-surface p-4 space-y-3">
               <SectionHeader
-                title="Debiti da saldare"
-                description={`${formatCurrency(openDebtsTotal)} ancora da pagare`}
-                href="/debts"
-                linkLabel="Gestisci"
+                title="Obiettivi"
+                description={
+                  reservedGoalsTotal > 0
+                    ? formatCurrency(reservedGoalsTotal)
+                    : undefined
+                }
+                href="/goals"
               />
-              <MoneyValue amount={openDebtsTotal} size="lg" tone="danger" />
-              <ul className="space-y-2">
+              <div className="space-y-2">
+                {highlightGoals.map((g) => (
+                  <GoalCard key={g.id} goal={g} compact href="/goals" />
+                ))}
+              </div>
+            </section>
+          )}
+        </div>
+      )}
+
+      {(savingsAccounts.length > 0 || openDebts.length > 0) && (
+        <div className="grid gap-3 sm:grid-cols-2">
+          {savingsAccounts.length > 0 && (
+            <section className="mf-surface p-4 space-y-2">
+              <SectionHeader title="Salvadanaio" href="/accounts" linkLabel="Conti" />
+              <MoneyValue amount={savingsBalance} size="md" tone="success" />
+            </section>
+          )}
+          {openDebts.length > 0 && (
+            <section className="mf-surface p-4 space-y-2">
+              <SectionHeader title="Debiti" href="/debts" linkLabel="Gestisci" />
+              <MoneyValue amount={openDebtsTotal} size="md" tone="danger" />
+              <ul className="space-y-1 text-sm">
                 {openDebts.map((d) => (
-                  <li
-                    key={d.id}
-                    className="flex items-center justify-between gap-3 text-sm"
-                  >
-                    <span className="truncate font-medium">{d.name}</span>
-                    <MoneyValue
-                      amount={Number(d.amount)}
-                      size="sm"
-                      tone="danger"
-                    />
+                  <li key={d.id} className="flex justify-between gap-2">
+                    <span className="truncate text-muted-foreground">{d.name}</span>
+                    <MoneyValue amount={Number(d.amount)} size="sm" tone="danger" />
                   </li>
                 ))}
               </ul>
@@ -425,115 +361,93 @@ export function DashboardView(props: {
         </div>
       )}
 
-      <CutPotentialSection result={cutPotential} compact />
-
-      <div className="grid gap-4 lg:grid-cols-3">
-        <ChartCard
-          title="Andamento"
-          description="Entrate vs uscite · 6 mesi"
-          className="lg:col-span-2"
-          contentClassName="h-52 sm:h-60"
-        >
-          <ResponsiveContainer width="100%" height="100%">
-            <AreaChart data={series}>
-              <defs>
-                <linearGradient id="inc" x1="0" y1="0" x2="0" y2="1">
-                  <stop
-                    offset="0%"
-                    stopColor="hsl(152 64% 34%)"
-                    stopOpacity={0.35}
-                  />
-                  <stop
-                    offset="100%"
-                    stopColor="hsl(152 64% 34%)"
-                    stopOpacity={0}
-                  />
-                </linearGradient>
-                <linearGradient id="exp" x1="0" y1="0" x2="0" y2="1">
-                  <stop
-                    offset="0%"
-                    stopColor="hsl(0 72% 48%)"
-                    stopOpacity={0.28}
-                  />
-                  <stop
-                    offset="100%"
-                    stopColor="hsl(0 72% 48%)"
-                    stopOpacity={0}
-                  />
-                </linearGradient>
-              </defs>
-              <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
-              <XAxis dataKey="label" tick={{ fontSize: 12 }} />
-              <YAxis tick={{ fontSize: 12 }} width={48} />
-              <Tooltip
-                formatter={(v: number) => formatCurrency(v)}
-                contentStyle={{
-                  borderRadius: 12,
-                  border: "1px solid hsl(var(--border))",
-                }}
-              />
-              <Area
-                type="monotone"
-                dataKey="income"
-                name="Entrate"
-                stroke="hsl(152 64% 34%)"
-                fill="url(#inc)"
-              />
-              <Area
-                type="monotone"
-                dataKey="expense"
-                name="Uscite"
-                stroke="hsl(0 72% 48%)"
-                fill="url(#exp)"
-              />
-            </AreaChart>
-          </ResponsiveContainer>
-        </ChartCard>
-
-        <ChartCard
-          title="Categorie"
-          description="Spese del mese"
-          contentClassName="h-52 sm:h-60"
-        >
-          {byCategory.length === 0 ? (
-            <p className="text-sm text-muted-foreground py-12 text-center">
-              Nessuna spesa
-            </p>
-          ) : (
-            <ResponsiveContainer width="100%" height="100%">
-              <PieChart>
-                <Pie
-                  data={byCategory.slice(0, 6)}
-                  dataKey="total"
-                  nameKey="name"
-                  innerRadius={48}
-                  outerRadius={80}
-                  paddingAngle={2}
-                >
-                  {byCategory.slice(0, 6).map((c) => (
-                    <Cell key={c.name} fill={c.color} />
-                  ))}
-                </Pie>
-                <Tooltip formatter={(v: number) => formatCurrency(v)} />
-              </PieChart>
-            </ResponsiveContainer>
+      <details className="mf-surface group">
+        <summary className="cursor-pointer list-none p-4 font-medium text-sm flex items-center justify-between">
+          <span>Andamento e insight</span>
+          <span className="text-xs text-muted-foreground group-open:hidden">
+            Apri
+          </span>
+          <span className="text-xs text-muted-foreground hidden group-open:inline">
+            Chiudi
+          </span>
+        </summary>
+        <div className="space-y-4 border-t px-4 pb-4 pt-3">
+          <PwaInstallNudge />
+          {!cutPotential.empty && (
+            <CutPotentialSection result={cutPotential} compact />
           )}
-        </ChartCard>
-      </div>
-
-      {insights.length > 0 && (
-        <section className="mf-surface p-4 sm:p-5 space-y-3">
-          <SectionHeader
-            title="Insight"
-            description="Suggerimenti automatici"
-          />
-          <div className="grid gap-2 sm:grid-cols-2">
-            {insights.slice(0, 4).map((i) => (
-              <InsightCard key={i.id} insight={i} />
-            ))}
+          {goalTrajectories.length > 0 && (
+            <p className="text-xs text-muted-foreground">
+              {goalTrajectories.length} obiettiv
+              {goalTrajectories.length === 1 ? "o" : "i"} con tappe —{" "}
+              <Link href="/goals" className="text-primary hover:underline">
+                vedi obiettivi
+              </Link>
+            </p>
+          )}
+          <div className="grid gap-3 lg:grid-cols-3">
+            <ChartCard
+              title="Andamento"
+              description="6 mesi"
+              className="lg:col-span-2"
+              contentClassName="h-48"
+            >
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={series}>
+                  <defs>
+                    <linearGradient id="inc" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="hsl(152 64% 34%)" stopOpacity={0.35} />
+                      <stop offset="100%" stopColor="hsl(152 64% 34%)" stopOpacity={0} />
+                    </linearGradient>
+                    <linearGradient id="exp" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="hsl(0 72% 48%)" stopOpacity={0.28} />
+                      <stop offset="100%" stopColor="hsl(0 72% 48%)" stopOpacity={0} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
+                  <XAxis dataKey="label" tick={{ fontSize: 12 }} />
+                  <YAxis tick={{ fontSize: 12 }} width={40} />
+                  <Tooltip formatter={(v: number) => formatCurrency(v)} />
+                  <Area type="monotone" dataKey="income" name="Entrate" stroke="hsl(152 64% 34%)" fill="url(#inc)" />
+                  <Area type="monotone" dataKey="expense" name="Uscite" stroke="hsl(0 72% 48%)" fill="url(#exp)" />
+                </AreaChart>
+              </ResponsiveContainer>
+            </ChartCard>
+            <ChartCard title="Categorie" description="Mese" contentClassName="h-48">
+              {byCategory.length === 0 ? (
+                <p className="text-sm text-muted-foreground py-10 text-center">
+                  Nessuna spesa
+                </p>
+              ) : (
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie
+                      data={byCategory.slice(0, 6)}
+                      dataKey="total"
+                      nameKey="name"
+                      innerRadius={40}
+                      outerRadius={70}
+                      paddingAngle={2}
+                    >
+                      {byCategory.slice(0, 6).map((c) => (
+                        <Cell key={c.name} fill={c.color} />
+                      ))}
+                    </Pie>
+                    <Tooltip formatter={(v: number) => formatCurrency(v)} />
+                  </PieChart>
+                </ResponsiveContainer>
+              )}
+            </ChartCard>
           </div>
-        </section>
-      )}
+          {insights.length > 0 && (
+            <div className="grid gap-2 sm:grid-cols-2">
+              {insights.slice(0, 4).map((i) => (
+                <InsightCard key={i.id} insight={i} />
+              ))}
+            </div>
+          )}
+        </div>
+      </details>
     </div>
   );
 }
