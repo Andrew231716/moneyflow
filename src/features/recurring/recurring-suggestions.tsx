@@ -87,7 +87,7 @@ export function RecurringSuggestions({
   const suggestions = useMemo(() => {
     const found = detectRecurringFromHistory(transactions, existing, {
       types: ["expense", "income"],
-      minOccurrences: 3,
+      minOccurrences: 2,
     });
     if (!ready) return found;
     return found.filter((s) => !dismissed.has(s.id));

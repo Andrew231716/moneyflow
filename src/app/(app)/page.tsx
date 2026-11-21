@@ -7,6 +7,7 @@ import {
   fetchDebts,
   fetchGoals,
   fetchRecurring,
+  fetchRules,
   fetchTransactions,
 } from "@/lib/data/queries";
 import { DashboardView } from "@/features/analytics/dashboard-view";
@@ -56,6 +57,7 @@ export default async function DashboardPage() {
     recurring,
     debts,
     categories,
+    rules,
     connections,
   ] = await Promise.all([
     fetchAccounts(),
@@ -65,6 +67,7 @@ export default async function DashboardPage() {
     fetchRecurring(),
     fetchDebts(),
     fetchCategories(),
+    fetchRules().catch(() => []),
     user
       ? listBankConnectionsForAlerts({
           supabase,
@@ -145,6 +148,8 @@ export default async function DashboardPage() {
         netWorth={netWorth}
         recent={recent}
         allTransactions={transactions}
+        categories={categories}
+        rules={rules}
         triage={{
           pendingCount: review.pending,
           uncategorizedCount: review.uncategorized,

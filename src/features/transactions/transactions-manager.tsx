@@ -39,6 +39,7 @@ import {
 } from "@/components/ui/table";
 import { TransferSuggestions } from "@/features/transactions/transfer-suggestions";
 import { SyncReviewQueue } from "@/features/transactions/sync-review-queue";
+import { AutoCategorizeButton } from "@/features/transactions/auto-categorize-button";
 import {
   PageHeader,
   TransactionItem,
@@ -431,6 +432,11 @@ export function TransactionsManager({
           onClick={() => { setCategoryFilter("uncategorized"); setFilter("all"); }}>
           Senza categoria
         </Button>
+        <AutoCategorizeButton
+          transactions={transactions}
+          categories={categories}
+          rules={rules}
+        />
         {(categoryFilter || filter !== "all" || searchQuery) && (
           <Button size="sm" variant="ghost" onClick={() => {
             setCategoryFilter(null);

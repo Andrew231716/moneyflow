@@ -958,10 +958,12 @@ export async function syncConnection(options: {
           continue;
         }
 
-        const classifyText = [n.description, n.merchant].filter(Boolean).join(" ");
+        const classifyText = [n.merchant, n.description].filter(Boolean).join(" ");
         const matched =
           n.type === "income" || n.type === "expense"
-            ? classifyDescription(classifyText, classificationRules, categories)
+            ? classifyDescription(classifyText, classificationRules, categories, {
+                type: n.type,
+              })
             : null;
         const categoryId =
           matched && matched.type === n.type ? matched.id : null;
