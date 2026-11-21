@@ -22,7 +22,7 @@ import type {
   Transaction,
 } from "@/types/database";
 import { createClient } from "@/lib/supabase/client";
-import { MoneyValue, SectionHeader } from "@/components/money";
+import { ExpandableText, MoneyValue, SectionHeader } from "@/components/money";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -109,16 +109,6 @@ export function UpcomingPayments({
   const router = useRouter();
   const [busyId, setBusyId] = useState<string | null>(null);
   const [dismissed, setDismissed] = useState<Set<string>>(() => readDismissed());
-  const [expandedIds, setExpandedIds] = useState<Set<string>>(() => new Set());
-
-  function toggleTitle(id: string) {
-    setExpandedIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  }
 
   const upcoming = useMemo(() => {
     const items = buildUpcomingPayments({
@@ -313,25 +303,9 @@ export function UpcomingPayments({
                         </span>
                       </div>
                       <div className="min-w-0 space-y-1">
-                        <button
-                          type="button"
-                          onClick={() => toggleTitle(item.id)}
-                          aria-expanded={expandedIds.has(item.id)}
-                          title={
-                            expandedIds.has(item.id)
-                              ? "Nascondi"
-                              : "Mostra nome completo"
-                          }
-                          className={cn(
-                            "w-full text-left font-medium break-words",
-                            "rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                            expandedIds.has(item.id)
-                              ? "whitespace-normal"
-                              : "truncate"
-                          )}
-                        >
+                        <ExpandableText className="font-medium">
                           {item.title}
-                        </button>
+                        </ExpandableText>
                         <div className="flex flex-wrap items-center gap-1.5">
                           <Badge
                             variant="outline"
@@ -462,7 +436,9 @@ export function UpcomingPayments({
                 key={item.id}
                 className="flex items-center justify-between gap-2"
               >
-                <span className="truncate">{item.name}</span>
+                <ExpandableText className="min-w-0 flex-1">
+                  {item.name}
+                </ExpandableText>
                 <MoneyValue amount={Number(item.amount)} size="sm" tone="danger" />
               </li>
             ))}

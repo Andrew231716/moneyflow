@@ -29,6 +29,7 @@ import {
   PageHeader,
   EmptyState,
   MoneyValue,
+  ExpandableText,
   AmountInput,
   ResponsiveFormShell,
 } from "@/components/money";
@@ -414,11 +415,14 @@ export function RecurringManager({
               >
                 <div className="flex items-center justify-between gap-3">
                   <div className="min-w-0">
-                    <p className="font-medium truncate">{r.description}</p>
-                    <p className="text-xs text-muted-foreground mt-0.5">
-                      Prossimo: {r.next_due_date} · {r.account?.name}
-                      {r.category?.name ? ` · ${r.category.name}` : ""}
-                    </p>
+                    <ExpandableText className="font-medium">
+                      {r.description}
+                    </ExpandableText>
+                    <ExpandableText className="text-xs text-muted-foreground mt-0.5">
+                      {`Prossimo: ${r.next_due_date} · ${r.account?.name ?? ""}${
+                        r.category?.name ? ` · ${r.category.name}` : ""
+                      }`}
+                    </ExpandableText>
                   </div>
                   <div className="text-right space-y-1 shrink-0">
                     <MoneyValue

@@ -8,6 +8,7 @@ import { cn } from "@/lib/utils";
 import type { BudgetProgress } from "@/types/database";
 import { MoneyValue } from "./money-value";
 import { StatusBadge } from "./status-badge";
+import { ExpandableText } from "./expandable-text";
 
 const barColor = {
   ok: "bg-success",
@@ -51,7 +52,7 @@ export function BudgetCard({
     <>
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
-          <p className="font-medium truncate">{name}</p>
+          <ExpandableText className="font-medium">{name}</ExpandableText>
           {!compact && (
             <p className="text-xs text-muted-foreground mt-0.5">
               {percent.toFixed(0)}% utilizzato

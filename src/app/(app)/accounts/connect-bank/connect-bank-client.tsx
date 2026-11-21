@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import Image from "next/image";
 import { useSearchParams } from "next/navigation";
 import { Building2, Loader2, Search, Star } from "lucide-react";
+import { ExpandableText } from "@/components/money";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import type { Institution } from "@/features/open-banking/types";
@@ -231,12 +232,14 @@ function InstitutionRow({
         )}
       </div>
       <div className="min-w-0 flex-1">
-        <p className="truncate font-medium">{institution.name}</p>
-        <p className="truncate text-xs text-muted-foreground">
+        <ExpandableText className="font-medium">
+          {institution.name}
+        </ExpandableText>
+        <ExpandableText className="text-xs text-muted-foreground">
           {[institution.bic, institution.countries?.[0]]
             .filter(Boolean)
             .join(" · ")}
-        </p>
+        </ExpandableText>
       </div>
       <Button
         size="sm"

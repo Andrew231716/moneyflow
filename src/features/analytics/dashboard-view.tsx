@@ -45,6 +45,7 @@ import {
   InsightCard,
   CutPotentialSection,
   EmptyState,
+  ExpandableText,
   SectionHeader,
   QuickActions,
   ChartCard,
@@ -351,7 +352,9 @@ export function DashboardView(props: {
               <ul className="space-y-1 text-sm">
                 {openDebts.map((d) => (
                   <li key={d.id} className="flex justify-between gap-2">
-                    <span className="truncate text-muted-foreground">{d.name}</span>
+                    <ExpandableText className="text-muted-foreground min-w-0 flex-1">
+                      {d.name}
+                    </ExpandableText>
                     <MoneyValue amount={Number(d.amount)} size="sm" tone="danger" />
                   </li>
                 ))}

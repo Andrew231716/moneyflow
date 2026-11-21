@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Loader2, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
+import { ExpandableText } from "@/components/money";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import type { BankConnectionRow } from "@/features/open-banking/types";
@@ -224,7 +225,9 @@ export function DashboardSyncStatus() {
             >
               <div className="min-w-0 space-y-0.5">
                 <div className="flex flex-wrap items-center gap-2">
-                  <span className="font-medium truncate">{c.institution_name}</span>
+                  <ExpandableText className="font-medium min-w-0">
+                    {c.institution_name}
+                  </ExpandableText>
                   <Badge
                     variant={c.status === "active" ? "success" : "secondary"}
                     className="shrink-0"
@@ -237,15 +240,16 @@ export function DashboardSyncStatus() {
                   {cooldown > 0 ? ` · prossima tra ${formatCooldownShort(cooldown)}` : ""}
                 </p>
                 {softDbHint && cooldown === 0 && (
-                  <p
+                  <ExpandableText
                     className={
                       looksLikeRateLimit(softDbHint)
-                        ? "text-xs text-amber-800 dark:text-amber-200 line-clamp-2"
-                        : "text-xs text-warning line-clamp-2"
+                        ? "text-xs text-amber-800 dark:text-amber-200"
+                        : "text-xs text-warning"
                     }
+                    collapsedClassName="line-clamp-2"
                   >
                     {softDbHint}
-                  </p>
+                  </ExpandableText>
                 )}
               </div>
               {c.status === "active" && (

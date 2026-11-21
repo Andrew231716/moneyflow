@@ -19,6 +19,7 @@ import {
   EmptyState,
   AmountInput,
   MoneyValue,
+  ExpandableText,
   ResponsiveFormShell,
 } from "@/components/money";
 
@@ -312,14 +313,19 @@ function DebtRow({
     <li className="mf-surface space-y-3 p-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="min-w-0 space-y-0.5">
-          <p className="font-medium truncate">{debt.name}</p>
+          <ExpandableText className="font-medium">{debt.name}</ExpandableText>
           {debt.due_date && open && (
             <p className="text-xs text-muted-foreground">
               Scadenza {debt.due_date.split("-").reverse().join("/")}
             </p>
           )}
           {debt.notes && (
-            <p className="text-xs text-muted-foreground line-clamp-2">{debt.notes}</p>
+            <ExpandableText
+              className="text-xs text-muted-foreground"
+              collapsedClassName="line-clamp-2"
+            >
+              {debt.notes}
+            </ExpandableText>
           )}
           {!open && debt.paid_at && (
             <p className="text-[11px] text-muted-foreground">Saldato</p>

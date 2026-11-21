@@ -25,6 +25,7 @@ import {
   ChartCard,
   MoneyValue,
   EmptyState,
+  ExpandableText,
   CutPotentialSection,
   GoalTrajectoryCard,
   SectionHeader,
@@ -227,7 +228,7 @@ export function StatisticsView({
                     style={{ background: c.color }}
                     aria-hidden
                   />
-                  <span className="truncate">{c.name}</span>
+                  <ExpandableText>{c.name}</ExpandableText>
                 </span>
                 <MoneyValue amount={c.total} size="sm" tone="danger" />
               </div>

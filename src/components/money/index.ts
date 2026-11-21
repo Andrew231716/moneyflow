@@ -2,6 +2,7 @@ export { PageHeader } from "./page-header";
 export { SectionHeader } from "./section-header";
 export { StatCard } from "./stat-card";
 export { MoneyValue } from "./money-value";
+export { ExpandableText } from "./expandable-text";
 export { BudgetCard } from "./budget-card";
 export { AccountCard, accountTypeLabels } from "./account-card";
 export { TransactionItem } from "./transaction-item";

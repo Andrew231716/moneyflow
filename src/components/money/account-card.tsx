@@ -6,6 +6,7 @@ import { normalizeCurrency } from "@/lib/finance/currency";
 import type { Account, AccountType } from "@/types/database";
 import { MoneyValue } from "./money-value";
 import { StatusBadge } from "./status-badge";
+import { ExpandableText } from "./expandable-text";
 
 const typeLabels: Record<AccountType, string> = {
   bank: "Banca",
@@ -34,7 +35,9 @@ export function AccountCard({
       <div className="p-4 space-y-3">
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0">
-            <p className="font-semibold truncate">{account.name}</p>
+            <ExpandableText className="font-semibold">
+              {account.name}
+            </ExpandableText>
             <div className="mt-1.5 flex flex-wrap gap-1.5">
               <StatusBadge tone="neutral">{typeLabels[account.type]}</StatusBadge>
               {currency !== "EUR" && (

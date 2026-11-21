@@ -16,6 +16,7 @@ import {
 } from "@/lib/finance/detect-recurring";
 import { createClient } from "@/lib/supabase/client";
 import { formatCurrency } from "@/lib/utils";
+import { ExpandableText } from "@/components/money";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -211,7 +212,9 @@ export function RecurringSuggestions({
               <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0 space-y-1">
                   <div className="flex flex-wrap items-center gap-2">
-                    <p className="font-medium truncate">{s.description}</p>
+                    <ExpandableText className="font-medium min-w-0">
+                      {s.description}
+                    </ExpandableText>
                     <Badge variant="secondary">
                       {s.type === "expense" ? "Uscita" : "Entrata"}
                     </Badge>
