@@ -235,11 +235,15 @@ function InstitutionRow({
         <ExpandableText className="font-medium">
           {institution.name}
         </ExpandableText>
-        <ExpandableText className="text-xs text-muted-foreground">
-          {[institution.bic, institution.countries?.[0]]
-            .filter(Boolean)
-            .join(" · ")}
-        </ExpandableText>
+        {[institution.bic, institution.countries?.[0]]
+          .filter(Boolean)
+          .join(" · ") ? (
+          <ExpandableText className="text-xs text-muted-foreground">
+            {[institution.bic, institution.countries?.[0]]
+              .filter(Boolean)
+              .join(" · ")}
+          </ExpandableText>
+        ) : null}
       </div>
       <Button
         size="sm"
