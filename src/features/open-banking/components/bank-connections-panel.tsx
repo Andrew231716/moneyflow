@@ -294,11 +294,12 @@ export function BankConnectionsPanel() {
       {connections.some((c) => /revolut/i.test(c.institution_name)) && (
         <p className="text-xs text-muted-foreground rounded-xl border border-border/70 bg-muted/40 px-3 py-2">
           <strong className="font-medium text-foreground">Revolut:</strong>{" "}
-          nell&apos;app, spunta il conto <strong>EUR</strong> prima di
-          confermare. Se vedi &quot;nessun conto&quot;, usa{" "}
-          <strong>Riprova conti</strong> o ricollega. Dopo il consenso
-          sincronizza subito (cronologia completa solo per pochi minuti; poi ~
-          90 giorni). Le carte compaiono solo se le selezioni nel consenso.
+          personale = paese <strong>LT</strong>. Nell&apos;app spunta{" "}
+          <strong>EUR</strong> prima di confermare. Se vedi &quot;nessun
+          conto&quot;: <strong>Riprova conti</strong>, oppure nel Control Panel
+          Enable Banking <strong>Link accounts</strong> sullo stesso IBAN, poi
+          ricollega. Sincronizza subito dopo il consenso (~90 giorni di
+          cronologia dopo i primi minuti).
         </p>
       )}
 

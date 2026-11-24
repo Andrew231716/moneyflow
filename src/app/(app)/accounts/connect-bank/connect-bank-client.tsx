@@ -112,11 +112,13 @@ export default function ConnectBankClient() {
         </p>
         {showRevolutTip && (
           <p className="text-xs text-muted-foreground rounded-xl border border-border/70 bg-muted/40 px-3 py-2 leading-relaxed">
-            <strong className="text-foreground">Revolut:</strong> nell&apos;app
-            mobile, <strong>prima di confermare</strong>, spunta il{" "}
-            <strong>conto EUR</strong> (e le carte se ti servono). Se torni qui
-            senza conti, da Conti usa <strong>Riprova conti</strong> oppure
-            ricollega e sincronizza subito.
+            <strong className="text-foreground">Revolut personale:</strong>{" "}
+            scegli la voce con paese <strong>LT</strong> (Bank UAB). Nell&apos;app,
+            <strong> prima di confermare</strong>, spunta il conto{" "}
+            <strong>EUR</strong>. Se Enable Banking è in modalità restricted,
+            nel Control Panel usa <strong>Link accounts</strong> sullo stesso
+            IBAN EUR, poi ripeti da MoneyFlow. Conto business →{" "}
+            <strong>RevolutBusiness</strong>.
           </p>
         )}
       </div>
@@ -235,15 +237,26 @@ function InstitutionRow({
         <ExpandableText className="font-medium">
           {institution.name}
         </ExpandableText>
-        {[institution.bic, institution.countries?.[0]]
-          .filter(Boolean)
-          .join(" · ") ? (
-          <ExpandableText className="text-xs text-muted-foreground">
-            {[institution.bic, institution.countries?.[0]]
-              .filter(Boolean)
-              .join(" · ")}
-          </ExpandableText>
-        ) : null}
+        {(() => {
+          const country = institution.countries?.[0];
+          const meta = [
+            institution.bic,
+            country,
+            /revolut/i.test(institution.name) &&
+            !/business/i.test(institution.name) &&
+            country?.toUpperCase() === "LT"
+              ? "personale"
+              : null,
+            /revolut.*business/i.test(institution.name) ? "business" : null,
+          ]
+            .filter(Boolean)
+            .join(" · ");
+          return meta ? (
+            <ExpandableText className="text-xs text-muted-foreground">
+              {meta}
+            </ExpandableText>
+          ) : null;
+        })()}
       </div>
       <Button
         size="sm"

@@ -3,10 +3,12 @@ import {
   findIntesaSanpaolo,
   isIntesaSanpaolo,
   isRevolut,
+  isRevolutPersonal,
   mergeRevolutFromExtraCountries,
   normalizeInstitutionName,
   prioritizeInstitutions,
   prioritizeRevolutSearch,
+  revolutEmptyAccountsTip,
 } from "../institutions";
 import type { Institution } from "../types";
 
@@ -80,12 +82,36 @@ describe("Intesa discovery (no hardcoded institution_id)", () => {
     ]);
   });
 
-  it("prioritizes Revolut when searching for it", () => {
+  it("drops IT personal Revolut when LT personal is available", () => {
+    const itList: Institution[] = [
+      { id: "IT::Revolut", name: "Revolut", countries: ["IT"] },
+      { id: "IT::UniCredit", name: "UniCredit", countries: ["IT"] },
+    ];
+    const ltList: Institution[] = [
+      { id: "LT::Revolut", name: "Revolut", countries: ["LT"] },
+      { id: "LT::RevolutBusiness", name: "RevolutBusiness", countries: ["LT"] },
+    ];
+    const merged = mergeRevolutFromExtraCountries(itList, ltList);
+    expect(merged.map((i) => i.id).sort()).toEqual([
+      "IT::UniCredit",
+      "LT::Revolut",
+      "LT::RevolutBusiness",
+    ]);
+    expect(isRevolutPersonal("Revolut")).toBe(true);
+    expect(isRevolutPersonal("RevolutBusiness")).toBe(false);
+  });
+
+  it("prioritizes LT personal Revolut when searching", () => {
     const list: Institution[] = [
       { id: "IT::Alpha", name: "Alpha Bank", countries: ["IT"] },
+      { id: "LT::RevolutBusiness", name: "RevolutBusiness", countries: ["LT"] },
       { id: "LT::Revolut", name: "Revolut Bank UAB", countries: ["LT"] },
     ];
     const sorted = prioritizeRevolutSearch(list, "revolut");
     expect(sorted[0].id).toBe("LT::Revolut");
+  });
+
+  it("empty-accounts tip mentions Control Panel whitelist", () => {
+    expect(revolutEmptyAccountsTip().toLowerCase()).toMatch(/restricted|link accounts|control panel/);
   });
 });

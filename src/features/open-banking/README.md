@@ -12,7 +12,12 @@ GoCardless Bank Account Data is closed to new signups. MoneyFlow defaults to
 3. Whitelist the redirect URL (must match `OPEN_BANKING_REDIRECT_URL`):
    - Local: `http://localhost:3000/api/open-banking/callback`
    - Production: `https://moneyflow-ecru.vercel.app/api/open-banking/callback`
-4. Copy env vars from `.env.example`:
+4. **Restricted production apps** (“Activate by linking accounts”): linking
+   Intesa alone is not enough. In the Control Panel, **Link accounts** for every
+   Revolut EUR (and cards) you will use in MoneyFlow, then re-authorize from the
+   app. Until those accounts are whitelisted, AIS returns `accounts: []` after a
+   successful Revolut consent.
+5. Copy env vars from `.env.example`:
 
 ```bash
 OPEN_BANKING_PROVIDER=enablebanking
@@ -81,6 +86,15 @@ Extend `Transaction` / `Account` types in `src/types/database.ts` with OB column
 Institution IDs are **never hardcoded**. Institutions are fetched for `country=IT` and Intesa is prioritized by case-insensitive name normalization (`Intesa Sanpaolo` / `Intesa San Paolo` / `INTESA SANPAOLO`). If not found, the full list is shown.
 
 Enable Banking ids are encoded as `COUNTRY::Name` (e.g. `IT::Intesa Sanpaolo`).
+
+## Revolut
+
+Personal Revolut is **Revolut Bank UAB** (`LT::Revolut`, `psu_type=personal`).
+MoneyFlow merges LT into the IT bank list and rewrites accidental `IT::Revolut`
+auth starts to LT. Business accounts need `RevolutBusiness` + `psu_type=business`.
+
+In the Revolut app, tick the **EUR** account before confirming. Credit cards only
+appear in the mobile consent UI, not the web flow.
 
 ## Tests
 
