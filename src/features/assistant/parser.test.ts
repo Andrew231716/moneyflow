@@ -3,8 +3,9 @@ import {
   parseAssistantCommand,
   parseItalianDate,
   runQueryBalance,
+  runQueryRecurringTotal,
 } from "@/features/assistant/parser";
-import type { Account } from "@/types/database";
+import type { Account, RecurringTransaction } from "@/types/database";
 
 describe("assistant parser", () => {
   it("parses expense command", () => {
@@ -117,6 +118,62 @@ describe("assistant parser", () => {
 
   it("returns unknown for gibberish", () => {
     expect(parseAssistantCommand("bla bla xyz").type).toBe("unknown");
+  });
+
+  it("parses recurring dues total with Italian end date", () => {
+    const intent = parseAssistantCommand(
+      "Dimmi il totale delle scadenze ricorrenti da oggi fino al 9 dicembre 2026"
+    );
+    expect(intent.type).toBe("query_recurring_total");
+    if (intent.type === "query_recurring_total") {
+      expect(intent.payload.until).toBe("2026-12-09");
+      expect(intent.payload.from).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    }
+  });
+
+  it("asks for a date when recurring total has none", () => {
+    const intent = parseAssistantCommand("totale scadenze ricorrenti");
+    expect(intent.type).toBe("unknown");
+    if (intent.type === "unknown") {
+      expect(intent.payload.message.toLowerCase()).toContain("data");
+    }
+  });
+
+  it("runQueryRecurringTotal expands monthly and weekly dues", () => {
+    const asOf = new Date(2026, 10, 24, 12); // 24 Nov 2026
+    const recurring = [
+      {
+        id: "r1",
+        is_active: true,
+        type: "expense",
+        amount: 10,
+        description: "Netflix",
+        frequency: "monthly",
+        next_due_date: "2026-12-01",
+        end_date: null,
+      },
+      {
+        id: "r2",
+        is_active: true,
+        type: "expense",
+        amount: 5,
+        description: "Palestra",
+        frequency: "weekly",
+        next_due_date: "2026-11-25",
+        end_date: null,
+      },
+    ] as RecurringTransaction[];
+
+    const result = runQueryRecurringTotal(
+      recurring,
+      { from: "2026-11-24", until: "2026-12-09" },
+      asOf
+    );
+    // Netflix once on 2026-12-01
+    // Palestra: 25 Nov, 2 Dec, 9 Dec = 3×5
+    expect(result.expenseTotal).toBe(10 + 15);
+    expect(result.count).toBe(4);
+    expect(result.summaryText).toMatch(/25[,.]00|25\.00|25/);
   });
 
   it("runQueryBalance sums accounts", () => {

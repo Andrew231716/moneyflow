@@ -24,6 +24,7 @@ import {
   runCutPotentialText,
   runQueryBalance,
   runQueryBudget,
+  runQueryRecurringTotal,
   runQueryTransactions,
 } from "@/features/assistant/parser";
 import { ASSISTANT_LLM_ENABLED } from "@/features/assistant/llm";
@@ -149,6 +150,18 @@ export function AssistantPanel({
         { label: "Totale", amount: result.total },
         ...result.lines.slice(0, 6).map((l) => ({
           label: l.name,
+          amount: l.amount,
+        })),
+      ]);
+      return;
+    }
+
+    if (intent.type === "query_recurring_total") {
+      const result = runQueryRecurringTotal(recurring, intent.payload);
+      pushAssistant(result.summaryText, [
+        { label: "Totale scadenze", amount: result.total },
+        ...result.lines.slice(0, 8).map((l) => ({
+          label: l.label,
           amount: l.amount,
         })),
       ]);
