@@ -14,13 +14,14 @@ import {
   calcTotalAvailability,
   generateInsights,
   forecastMonthEnd,
+  nextDueAfter,
 } from "@/lib/finance/engine";
 import {
   formatCutPotentialAssistantText,
   rankCutPotential,
 } from "@/lib/finance/cut-potential";
 import { parseItalianDeadline } from "@/lib/finance/goal-what-if";
-import type { RecurringTransaction } from "@/types/database";
+import type { RecurringFrequency, RecurringTransaction } from "@/types/database";
 import { formatCurrency } from "@/lib/utils";
 
 export type AssistantIntent =
@@ -38,6 +39,7 @@ export type AssistantIntent =
   | { type: "sync_bank"; payload: { institutionHint: string } }
   | { type: "query_balance"; payload: { accountHint?: string } }
   | { type: "query_transactions"; payload: QueryPayload }
+  | { type: "query_recurring_total"; payload: QueryRecurringTotalPayload }
   | { type: "query_insights"; payload: Record<string, never> }
   | { type: "query_cut_potential"; payload: Record<string, never> }
   | { type: "bulk_categorize"; payload: BulkCategorizePayload }
@@ -46,6 +48,13 @@ export type AssistantIntent =
   | { type: "goal_what_if"; payload: GoalWhatIfPayload }
   | { type: "help"; payload: Record<string, never> }
   | { type: "unknown"; payload: { message: string } };
+
+export interface QueryRecurringTotalPayload {
+  /** Inclusive end date (yyyy-MM-dd) */
+  until: string;
+  /** Inclusive start date (yyyy-MM-dd); defaults to today */
+  from?: string;
+}
 
 export interface CreateTxPayload {
   txType: "income" | "expense";
@@ -275,6 +284,7 @@ const HELP_MESSAGE = `Sono il Gestore finanziario locale (calcoli gratis, senza 
 • Movimenti: "Aggiungi spesa 35 euro ristorante ieri", "Entrata 100 freelance"
 • Banca: "Sincronizza Intesa"
 • Query: "Quanto ho sul conto?", "Quanto ho speso questo mese", "Budget rimanente", "Previsione fine mese"
+• Scadenze: "Totale scadenze ricorrenti da oggi fino al 9 dicembre 2026"
 • Altro: "Categorizza coop come alimentari", "Crea budget 200 alimentari"`;
 
 
@@ -410,6 +420,10 @@ export function parseAssistantCommand(input: string): AssistantIntent {
       },
     };
   }
+
+  // Recurring dues total in a date range — before generic "quanto"/expense queries
+  const recurringTotal = tryParseRecurringTotalQuery(text, lower);
+  if (recurringTotal) return recurringTotal;
 
   // Budget remaining
   if (/budget|rimanente|avanzat/.test(lower) && !/crea|imposta|imposta|nuovo/.test(lower)) {
@@ -636,6 +650,176 @@ export function runQueryTransactions(
   };
 }
 
+/**
+ * "Totale scadenze ricorrenti da oggi fino al 9 dicembre 2026"
+ */
+export function tryParseRecurringTotalQuery(
+  text: string,
+  lower = text.toLowerCase()
+): AssistantIntent | null {
+  if (/^ricorrente\s+(spesa|uscita|entrata|incasso)\b/.test(lower)) return null;
+
+  const looksLike =
+    /scadenz/.test(lower) ||
+    (/ricorrent/.test(lower) &&
+      /(totale|somma|fino|entro|quanto|dimmi|elenca|lista|prossimi)/.test(
+        lower
+      )) ||
+    /prossimi\s+pagament/.test(lower);
+  if (!looksLike) return null;
+
+  const until = parseItalianDeadline(text);
+  if (!until) {
+    return {
+      type: "unknown",
+      payload: {
+        message:
+          'Per il totale scadenze indica una data, es. "Totale scadenze ricorrenti fino al 9 dicembre 2026".',
+      },
+    };
+  }
+
+  let from: string | undefined;
+  const daMatch = lower.match(/\bda\s+(.+?)\s+(?:fino|al|entro)\b/);
+  if (daMatch) {
+    const fromRaw = daMatch[1].trim();
+    if (/^oggi\b/.test(fromRaw)) {
+      from = format(new Date(), "yyyy-MM-dd");
+    } else {
+      from = parseItalianDeadline(fromRaw) ?? undefined;
+    }
+  }
+
+  return {
+    type: "query_recurring_total",
+    payload: { until, from },
+  };
+}
+
+function expandRecurringOccurrences(
+  item: RecurringTransaction,
+  from: string,
+  until: string
+): { date: string; amount: number; description: string; type: "income" | "expense" }[] {
+  const out: {
+    date: string;
+    amount: number;
+    description: string;
+    type: "income" | "expense";
+  }[] = [];
+  let cursor = parseISO(`${item.next_due_date.slice(0, 10)}T12:00:00`);
+  const fromD = parseISO(`${from}T12:00:00`);
+  const untilD = parseISO(`${until}T12:00:00`);
+  const endD = item.end_date
+    ? parseISO(`${item.end_date.slice(0, 10)}T12:00:00`)
+    : null;
+  const freq = item.frequency as RecurringFrequency;
+
+  let guard = 0;
+  while (cursor.getTime() < fromD.getTime() && guard++ < 600) {
+    cursor = nextDueAfter(cursor, freq);
+  }
+  while (cursor.getTime() <= untilD.getTime() && guard++ < 600) {
+    if (endD && cursor.getTime() > endD.getTime()) break;
+    const date = format(cursor, "yyyy-MM-dd");
+    if (date >= from && date <= until) {
+      out.push({
+        date,
+        amount: Number(item.amount),
+        description: item.description,
+        type: item.type,
+      });
+    }
+    cursor = nextDueAfter(cursor, freq);
+  }
+  return out;
+}
+
+export function runQueryRecurringTotal(
+  recurring: RecurringTransaction[],
+  payload: QueryRecurringTotalPayload,
+  asOf = new Date()
+): {
+  summaryText: string;
+  total: number;
+  expenseTotal: number;
+  incomeTotal: number;
+  count: number;
+  lines: { label: string; amount: number }[];
+} {
+  const from = payload.from ?? format(asOf, "yyyy-MM-dd");
+  const until = payload.until;
+  if (until < from) {
+    return {
+      summaryText: `La data di fine (${until.split("-").reverse().join("/")}) è prima dell'inizio (${from.split("-").reverse().join("/")}).`,
+      total: 0,
+      expenseTotal: 0,
+      incomeTotal: 0,
+      count: 0,
+      lines: [],
+    };
+  }
+
+  const active = recurring.filter((r) => r.is_active);
+  const occurrences = active.flatMap((r) =>
+    expandRecurringOccurrences(r, from, until)
+  );
+  occurrences.sort((a, b) => a.date.localeCompare(b.date));
+
+  const expenses = occurrences.filter((o) => o.type === "expense");
+  const incomes = occurrences.filter((o) => o.type === "income");
+  const expenseTotal = expenses.reduce((s, o) => s + o.amount, 0);
+  const incomeTotal = incomes.reduce((s, o) => s + o.amount, 0);
+
+  // Group by description for a compact breakdown (expenses first — "scadenze")
+  const byDesc = new Map<string, { amount: number; count: number; type: string }>();
+  for (const o of [...expenses, ...incomes]) {
+    const key = o.description || "Ricorrente";
+    const prev = byDesc.get(key) ?? { amount: 0, count: 0, type: o.type };
+    prev.amount += o.amount;
+    prev.count += 1;
+    byDesc.set(key, prev);
+  }
+  const lines = [...byDesc.entries()]
+    .sort((a, b) => b[1].amount - a[1].amount)
+    .map(([name, v]) => ({
+      label: v.count > 1 ? `${name} (×${v.count})` : name,
+      amount: v.amount,
+    }));
+
+  const fromLabel = from.split("-").reverse().join("/");
+  const untilLabel = until.split("-").reverse().join("/");
+
+  if (!occurrences.length) {
+    return {
+      summaryText: `Nessuna scadenza ricorrente tra il ${fromLabel} e il ${untilLabel}.`,
+      total: expenseTotal,
+      expenseTotal,
+      incomeTotal,
+      count: 0,
+      lines: [],
+    };
+  }
+
+  const detail = lines
+    .slice(0, 12)
+    .map((l) => `• ${l.label}: ${formatCurrency(l.amount)}`)
+    .join("\n");
+  const incomeLine =
+    incomeTotal > 0
+      ? `\nEntrate ricorrenti nello stesso periodo: ${formatCurrency(incomeTotal)} (${incomes.length} occorrenze).`
+      : "";
+
+  return {
+    total: expenseTotal,
+    expenseTotal,
+    incomeTotal,
+    count: expenses.length,
+    lines,
+    summaryText: `Scadenze ricorrenti dal ${fromLabel} al ${untilLabel}: ${expenses.length} uscite per ${formatCurrency(expenseTotal)}.\n${detail}${incomeLine}`,
+  };
+}
+
 export function runQueryBalance(
   accounts: Account[],
   accountHint?: string,
@@ -788,6 +972,7 @@ export const ASSISTANT_EXAMPLES = [
   "Crea obiettivo Matrimonio Giulia e Ruben a 200 euro già raggiunto",
   "Dove posso risparmiare?",
   "Quanto ho sul conto?",
+  "Totale scadenze ricorrenti da oggi fino al 9 dicembre 2026",
   "Sincronizza Intesa",
   "Aggiungi spesa 35 euro ristorante ieri",
   "Budget rimanente",
