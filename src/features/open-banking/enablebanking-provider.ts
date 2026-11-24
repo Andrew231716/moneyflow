@@ -249,10 +249,14 @@ interface EbAuthResponse {
 }
 
 interface EbSessionAccount {
-  uid: string;
+  uid?: string;
+  /** Some ASPSP payloads use these alternate id fields. */
+  account_uid?: string;
+  id?: string;
   name?: string;
   currency?: string;
   product?: string;
+  iban?: string;
   account_id?: { iban?: string };
 }
 
@@ -266,6 +270,10 @@ interface EbSessionResponse {
   };
   aspsp?: { name: string; country: string };
 }
+
+/** How long to wait for ASPSPs that populate session.accounts asynchronously (e.g. Revolut). */
+const SESSION_ACCOUNT_POLL_ATTEMPTS = 6;
+const SESSION_ACCOUNT_POLL_DELAY_MS = 1000;
 
 interface EbBalance {
   name?: string;
@@ -288,18 +296,28 @@ interface EbTransaction {
   debtor?: { name?: string };
 }
 
-/** Session payloads may return full account objects or bare UUID strings. */
-function mapSessionAccount(a: EbSessionAccount | string): ProviderAccount {
+/**
+ * Session payloads may return full account objects or bare UUID strings.
+ * Accept common id field aliases so we do not treat valid rows as empty.
+ */
+export function mapSessionAccount(a: EbSessionAccount | string): ProviderAccount {
   if (typeof a === "string") {
     return { id: a };
   }
+  const id = a.uid || a.account_uid || a.id || "";
   return {
-    id: a.uid,
-    iban: a.account_id?.iban ?? null,
+    id,
+    iban: a.account_id?.iban ?? a.iban ?? null,
     name: a.name ?? a.product ?? null,
     currency: a.currency ?? null,
     product: a.product ?? null,
   };
+}
+
+function mapSessionAccounts(
+  raw: Array<EbSessionAccount | string> | null | undefined
+): ProviderAccount[] {
+  return (raw ?? []).map(mapSessionAccount).filter((a) => Boolean(a.id));
 }
 
 function consentValidUntilIso(maximumConsentValiditySec?: number | null): string {
@@ -460,6 +478,8 @@ export class EnableBankingProvider implements OpenBankingProvider {
 
   /**
    * Exchange authorization code for session (Enable Banking callback step).
+   * Some ASPSPs (notably Revolut) may return `accounts: []` on the first
+   * POST /sessions response and populate them shortly after — poll GET.
    */
   async completeAuthorization(params: {
     code: string;
@@ -468,14 +488,29 @@ export class EnableBankingProvider implements OpenBankingProvider {
     accounts: ProviderAccount[];
     consentExpiresAt: string | null;
   }> {
-    const session = await ebFetch<EbSessionResponse>("/sessions", {
+    let session = await ebFetch<EbSessionResponse>("/sessions", {
       method: "POST",
       body: JSON.stringify({ code: params.code }),
     });
 
-    const accounts = (session.accounts ?? [])
-      .map(mapSessionAccount)
-      .filter((a) => Boolean(a.id));
+    let accounts = mapSessionAccounts(session.accounts);
+
+    if (accounts.length === 0 && session.session_id) {
+      for (let attempt = 0; attempt < SESSION_ACCOUNT_POLL_ATTEMPTS; attempt++) {
+        await sleep(SESSION_ACCOUNT_POLL_DELAY_MS);
+        try {
+          const refreshed = await ebFetch<EbSessionResponse>(
+            `/sessions/${encodeURIComponent(session.session_id)}`
+          );
+          session = { ...session, ...refreshed, session_id: refreshed.session_id || session.session_id };
+          accounts = mapSessionAccounts(refreshed.accounts);
+          if (accounts.length > 0) break;
+        } catch {
+          // Keep trying until attempts are exhausted; empty list handled by caller.
+        }
+      }
+    }
+
     const institutionId = session.aspsp
       ? encodeInstitutionId(session.aspsp.country, session.aspsp.name)
       : "";
@@ -500,9 +535,7 @@ export class EnableBankingProvider implements OpenBankingProvider {
     const session = await ebFetch<EbSessionResponse>(
       `/sessions/${encodeURIComponent(connectionId)}`
     );
-    const accounts = (session.accounts ?? [])
-      .map(mapSessionAccount)
-      .filter((a) => Boolean(a.id));
+    const accounts = mapSessionAccounts(session.accounts);
     return {
       id: session.session_id,
       status: "ACTIVE",

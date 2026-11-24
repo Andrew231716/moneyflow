@@ -260,8 +260,10 @@ export async function handleConnectionCallback(options: {
 
     if (completed.accounts.length === 0) {
       const tip = isRevolut(connection.institution_name)
-        ? "Revolut non ha condiviso nessun conto. Nell'app Revolut autorizza il conto EUR (e le carte se ti servono), poi ricollega da Conti."
+        ? "Revolut non ha condiviso nessun conto. Nell'app Revolut, prima di confermare, spunta il conto EUR (e le carte se ti servono), poi ricollega da Conti → Collega banca."
         : "La banca non ha condiviso nessun conto. Riprova e seleziona almeno un conto nell'autorizzazione.";
+      // Keep session_id so a later sync/retry can rediscover accounts without a new OAuth
+      // if the ASPSP populates them after the callback window.
       await options.supabase
         .from("bank_connections")
         .update({ status: "error", error_message: tip })
@@ -622,12 +624,8 @@ export async function syncConnection(options: {
     throw new Error("Connessione non trovata o non autorizzata.");
   }
 
-  const conn = connection as BankConnectionRow;
+  let conn = connection as BankConnectionRow;
   const meta = readConnectionMetadata(conn.metadata);
-
-  if (conn.status !== "active") {
-    throw new OpenBankingHttpError("La connessione non è attiva. Completa o rinnova il collegamento.", 409);
-  }
 
   if (
     conn.consent_expires_at &&
@@ -647,14 +645,83 @@ export async function syncConnection(options: {
   }
 
   const provider = getOpenBankingProvider(conn.provider);
-  const { data: bankAccounts, error: bankAccountsError } = await supabase
+
+  // After Revolut/EB auth, accounts can arrive late. If we have a session but no
+  // local bank_accounts yet, rediscover before requiring status === active.
+  let { data: bankAccounts, error: bankAccountsError } = await supabase
     .from("bank_accounts")
     .select("*")
     .eq("connection_id", conn.id)
     .eq("user_id", userId);
 
+  if (
+    !bankAccountsError &&
+    (!bankAccounts || bankAccounts.length === 0) &&
+    conn.provider_connection_id &&
+    (conn.status === "active" ||
+      conn.status === "error" ||
+      conn.status === "pending")
+  ) {
+    try {
+      let remoteAccounts = await provider.getAccounts(conn.provider_connection_id);
+      if (remoteAccounts.length === 0) {
+        for (let i = 0; i < 3; i++) {
+          await sleep(1000);
+          remoteAccounts = await provider.getAccounts(conn.provider_connection_id);
+          if (remoteAccounts.length > 0) break;
+        }
+      }
+      for (const pa of remoteAccounts) {
+        await upsertBankAccountAndMoneyFlowAccount({
+          supabase,
+          userId,
+          connection: conn,
+          providerAccountId: pa.id,
+          iban: pa.iban,
+          name: pa.name ?? `${conn.institution_name}`,
+          currency: pa.currency ?? "EUR",
+        });
+      }
+      if (remoteAccounts.length > 0) {
+        const { data: revived } = await supabase
+          .from("bank_connections")
+          .update({ status: "active", error_message: null })
+          .eq("id", conn.id)
+          .eq("user_id", userId)
+          .select("*")
+          .single();
+        if (revived) conn = revived as BankConnectionRow;
+        const refreshed = await supabase
+          .from("bank_accounts")
+          .select("*")
+          .eq("connection_id", conn.id)
+          .eq("user_id", userId);
+        bankAccounts = refreshed.data;
+        bankAccountsError = refreshed.error;
+      }
+    } catch (err) {
+      if (conn.status !== "active") {
+        throw err instanceof Error
+          ? err
+          : new Error("Impossibile recuperare i conti dalla banca.");
+      }
+      // Active with empty accounts: fall through to the generic empty error.
+    }
+  }
+
+  if (conn.status !== "active") {
+    throw new OpenBankingHttpError(
+      "La connessione non è attiva. Completa o rinnova il collegamento.",
+      409
+    );
+  }
+
   if (bankAccountsError || !bankAccounts?.length) {
-    throw new Error("Nessun conto bancario disponibile per la sincronizzazione.");
+    throw new Error(
+      isRevolut(conn.institution_name)
+        ? "Revolut non ha ancora condiviso conti. Nell'app spunta il conto EUR e riprova, oppure ricollega."
+        : "Nessun conto bancario disponibile per la sincronizzazione."
+    );
   }
 
   const [{ data: rulesData }, { data: categoriesData }] = await Promise.all([

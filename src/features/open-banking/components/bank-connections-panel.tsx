@@ -293,11 +293,12 @@ export function BankConnectionsPanel() {
 
       {connections.some((c) => /revolut/i.test(c.institution_name)) && (
         <p className="text-xs text-muted-foreground rounded-xl border border-border/70 bg-muted/40 px-3 py-2">
-          <strong className="font-medium text-foreground">Revolut:</strong> autorizza
-          dall&apos;app mobile e seleziona il conto <strong>EUR</strong>. Dopo il consenso
-          sincronizza subito (la cronologia completa è disponibile solo per pochi minuti;
-          poi Revolut espone circa 90 giorni). Le carte di credito compaiono solo se
-          le selezioni nel consenso in-app.
+          <strong className="font-medium text-foreground">Revolut:</strong>{" "}
+          nell&apos;app, spunta il conto <strong>EUR</strong> prima di
+          confermare. Se vedi &quot;nessun conto&quot;, usa{" "}
+          <strong>Riprova conti</strong> o ricollega. Dopo il consenso
+          sincronizza subito (cronologia completa solo per pochi minuti; poi ~
+          90 giorni). Le carte compaiono solo se le selezioni nel consenso.
         </p>
       )}
 
@@ -389,6 +390,24 @@ export function BankConnectionsPanel() {
                       <Link href="/accounts/connect-bank">Ricollega</Link>
                     </Button>
                   )}
+                  {c.status === "error" &&
+                    !c.consent_expired &&
+                    /nessun conto|non ha condiviso/i.test(c.error_message ?? "") && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="min-h-touch"
+                        disabled={syncBusy || cool > 0}
+                        onClick={() => void sync(c.id, false)}
+                      >
+                        {syncBusy ? (
+                          <Loader2 className="animate-spin" />
+                        ) : (
+                          <RefreshCw />
+                        )}
+                        Riprova conti
+                      </Button>
+                    )}
                   {c.status === "active" && !c.consent_expired && (
                     <>
                       <Button
