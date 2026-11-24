@@ -18,6 +18,7 @@ import {
   mergeRevolutFromExtraCountries,
   prioritizeInstitutions,
   prioritizeRevolutSearch,
+  revolutEmptyAccountsTip,
 } from "./institutions";
 import {
   IncompleteTransactionsError,
@@ -183,12 +184,20 @@ export async function startBankConnection(options: {
     institutionId: options.institutionId,
     redirectUrl: redirectUrl(),
     reference,
-    userLanguage: "IT",
+    userLanguage: "it",
   });
 
   if (!created.link) {
     throw new Error("Il provider non ha restituito il link di autorizzazione.");
   }
+
+  // Enable Banking may rewrite Revolut IT → LT::Revolut during createConnection.
+  const resolvedInstitutionId = created.institutionId || options.institutionId;
+  const resolvedInstitutionName =
+    resolvedInstitutionId.includes("::") &&
+    resolvedInstitutionId !== options.institutionId
+      ? resolvedInstitutionId.split("::").slice(1).join("::")
+      : options.institutionName;
 
   const { data, error } = await options.supabase
     .from("bank_connections")
@@ -196,11 +205,15 @@ export async function startBankConnection(options: {
       user_id: options.userId,
       provider: providerId,
       provider_connection_id: created.id,
-      institution_id: options.institutionId,
-      institution_name: options.institutionName,
+      institution_id: resolvedInstitutionId,
+      institution_name: resolvedInstitutionName,
       institution_logo: options.institutionLogo ?? null,
       status: "pending",
-      metadata: { reference },
+      metadata: {
+        reference,
+        requested_institution_id: options.institutionId,
+        resolved_institution_id: resolvedInstitutionId,
+      },
     })
     .select("id")
     .single();
@@ -260,13 +273,22 @@ export async function handleConnectionCallback(options: {
 
     if (completed.accounts.length === 0) {
       const tip = isRevolut(connection.institution_name)
-        ? "Revolut non ha condiviso nessun conto. Nell'app Revolut, prima di confermare, spunta il conto EUR (e le carte se ti servono), poi ricollega da Conti → Collega banca."
+        ? revolutEmptyAccountsTip()
         : "La banca non ha condiviso nessun conto. Riprova e seleziona almeno un conto nell'autorizzazione.";
       // Keep session_id so a later sync/retry can rediscover accounts without a new OAuth
       // if the ASPSP populates them after the callback window.
       await options.supabase
         .from("bank_connections")
-        .update({ status: "error", error_message: tip })
+        .update({
+          status: "error",
+          error_message: tip,
+          metadata: {
+            ...(connection.metadata ?? {}),
+            empty_accounts_after_auth: true,
+            session_id: completed.connection.id,
+            aspsp: completed.connection.institutionId || null,
+          },
+        })
         .eq("id", connection.id)
         .eq("user_id", options.userId);
       throw new OpenBankingHttpError(tip, 400);

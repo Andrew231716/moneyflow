@@ -370,6 +370,48 @@ describe("Enable Banking booked + pending transactions", () => {
     expect(mapSessionAccount({}).id).toBe("");
   });
 
+  it("createConnection rewrites personal Revolut IT → LT and sends language", async () => {
+    process.env.ENABLEBANKING_APPLICATION_ID = "app-test-id";
+    process.env.ENABLEBANKING_PRIVATE_KEY = TEST_PRIVATE_KEY;
+
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.includes("/aspsps?country=LT")) {
+        return new Response(
+          JSON.stringify({
+            aspsps: [{ name: "Revolut", country: "LT", maximum_consent_validity: 7776000 }],
+          }),
+          { status: 200 }
+        );
+      }
+      if (url.includes("/auth") && init?.method === "POST") {
+        const body = JSON.parse(String(init.body));
+        expect(body.aspsp).toEqual({ name: "Revolut", country: "LT" });
+        expect(body.psu_type).toBe("personal");
+        expect(body.language).toBe("it");
+        return new Response(
+          JSON.stringify({
+            url: "https://enablebanking.com/auth/start",
+            authorization_id: "auth-1",
+          }),
+          { status: 200 }
+        );
+      }
+      return new Response(JSON.stringify({ aspsps: [] }), { status: 200 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const provider = new EnableBankingProvider();
+    const conn = await provider.createConnection({
+      institutionId: "IT::Revolut",
+      redirectUrl: "https://example.com/callback",
+      reference: "mf_ref",
+      userLanguage: "it",
+    });
+    expect(conn.institutionId).toBe("LT::Revolut");
+    expect(conn.link).toContain("enablebanking.com");
+  });
+
   it("completeAuthorization polls GET /sessions when POST returns empty accounts", async () => {
     process.env.ENABLEBANKING_APPLICATION_ID = "app-test-id";
     process.env.ENABLEBANKING_PRIVATE_KEY = TEST_PRIVATE_KEY;

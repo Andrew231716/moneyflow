@@ -18,6 +18,7 @@ import type {
   ProviderConnection,
   ProviderTransaction,
 } from "./types";
+import { isRevolutPersonal } from "./institutions";
 
 const API_BASE = "https://api.enablebanking.com";
 
@@ -398,7 +399,7 @@ export class EnableBankingProvider implements OpenBankingProvider {
   async getInstitutions(country: string): Promise<Institution[]> {
     const code = country.toUpperCase();
     const data = await ebFetch<{ aspsps: EbAspsp[] }>(
-      `/aspsps?country=${encodeURIComponent(code)}`
+      `/aspsps?country=${encodeURIComponent(code)}&service=aisp`
     );
     return (data.aspsps ?? []).map((a) => {
       const days =
@@ -419,9 +420,29 @@ export class EnableBankingProvider implements OpenBankingProvider {
   async createConnection(
     params: CreateConnectionParams
   ): Promise<ProviderConnection> {
-    const { country, name } = decodeInstitutionId(params.institutionId);
+    let { country, name } = decodeInstitutionId(params.institutionId);
+
+    // Personal Revolut AIS is Revolut Bank UAB (LT). Auth under IT often succeeds
+    // then returns accounts: [] — rewrite to LT personal before POST /auth.
+    if (isRevolutPersonal(name) && country !== "LT") {
+      try {
+        const lt = await ebFetch<{ aspsps: EbAspsp[] }>(
+          `/aspsps?country=LT&psu_type=personal&service=aisp`
+        );
+        const match = (lt.aspsps ?? []).find((a) =>
+          isRevolutPersonal(a.name ?? "")
+        );
+        if (match) {
+          country = (match.country || "LT").toUpperCase();
+          name = match.name;
+        }
+      } catch {
+        // Fall through with the original institution id.
+      }
+    }
+
     const aspsps = await ebFetch<{ aspsps: EbAspsp[] }>(
-      `/aspsps?country=${encodeURIComponent(country)}`
+      `/aspsps?country=${encodeURIComponent(country)}&psu_type=personal&service=aisp`
     );
     const normalizedTarget = name
       .normalize("NFD")
@@ -448,6 +469,8 @@ export class EnableBankingProvider implements OpenBankingProvider {
     const aspspName = aspsp?.name ?? name;
     const aspspCountry = (aspsp?.country || country).toUpperCase();
     const validUntil = consentValidUntilIso(aspsp?.maximum_consent_validity);
+    const language = (params.userLanguage || "it").toLowerCase().slice(0, 2);
+    const psuType = /business/i.test(aspspName) ? "business" : "personal";
 
     const data = await ebFetch<EbAuthResponse>("/auth", {
       method: "POST",
@@ -460,14 +483,15 @@ export class EnableBankingProvider implements OpenBankingProvider {
         aspsp: { name: aspspName, country: aspspCountry },
         state: params.reference,
         redirect_url: params.redirectUrl,
-        psu_type: "personal",
+        psu_type: psuType,
+        language,
       }),
     });
 
     return {
       id: data.authorization_id,
       status: "PENDING",
-      institutionId: params.institutionId,
+      institutionId: encodeInstitutionId(aspspCountry, aspspName),
       link: data.url,
       accounts: [],
       reference: params.reference,
