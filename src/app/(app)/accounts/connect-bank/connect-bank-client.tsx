@@ -112,11 +112,11 @@ export default function ConnectBankClient() {
         </p>
         {showRevolutTip && (
           <p className="text-xs text-muted-foreground rounded-xl border border-border/70 bg-muted/40 px-3 py-2 leading-relaxed">
-            <strong className="text-foreground">Revolut:</strong> resta
-            connesso a MoneyFlow, completa l&apos;autorizzazione nell&apos;app
-            mobile, seleziona il <strong>conto EUR</strong> (e le carte se ti
-            servono), poi torna qui e da Conti premi{" "}
-            <strong>Sincronizza</strong> subito.
+            <strong className="text-foreground">Revolut:</strong> nell&apos;app
+            mobile, <strong>prima di confermare</strong>, spunta il{" "}
+            <strong>conto EUR</strong> (e le carte se ti servono). Se torni qui
+            senza conti, da Conti usa <strong>Riprova conti</strong> oppure
+            ricollega e sincronizza subito.
           </p>
         )}
       </div>

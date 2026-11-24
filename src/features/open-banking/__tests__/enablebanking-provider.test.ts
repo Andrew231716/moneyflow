@@ -6,6 +6,7 @@ import {
   decodeInstitutionId,
   encodeInstitutionId,
   EnableBankingProvider,
+  mapSessionAccount,
   parseEbAmount,
 } from "../enablebanking-provider";
 
@@ -359,6 +360,66 @@ describe("Enable Banking booked + pending transactions", () => {
     expect(connection.accounts).toEqual([
       "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
     ]);
+  });
+
+  it("mapSessionAccount accepts uid / account_uid / id aliases", () => {
+    expect(mapSessionAccount("bare-uuid").id).toBe("bare-uuid");
+    expect(mapSessionAccount({ uid: "u1", currency: "EUR" }).id).toBe("u1");
+    expect(mapSessionAccount({ account_uid: "a1" }).id).toBe("a1");
+    expect(mapSessionAccount({ id: "i1", iban: "LT12" }).iban).toBe("LT12");
+    expect(mapSessionAccount({}).id).toBe("");
+  });
+
+  it("completeAuthorization polls GET /sessions when POST returns empty accounts", async () => {
+    process.env.ENABLEBANKING_APPLICATION_ID = "app-test-id";
+    process.env.ENABLEBANKING_PRIVATE_KEY = TEST_PRIVATE_KEY;
+    vi.spyOn(globalThis, "setTimeout").mockImplementation(((
+      handler: TimerHandler,
+      _ms?: number,
+      ...args: unknown[]
+    ) => {
+      if (typeof handler === "function") handler(...(args as never[]));
+      return 0 as unknown as ReturnType<typeof setTimeout>;
+    }) as unknown as typeof setTimeout);
+
+    let calls = 0;
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      calls += 1;
+      if (url.endsWith("/sessions") && calls === 1) {
+        return new Response(
+          JSON.stringify({
+            session_id: "sess-revolut",
+            accounts: [],
+            aspsp: { name: "Revolut", country: "LT" },
+            access: { valid_until: "2027-01-01T00:00:00.000Z" },
+          }),
+          { status: 200 }
+        );
+      }
+      return new Response(
+        JSON.stringify({
+          session_id: "sess-revolut",
+          accounts: [
+            {
+              account_uid: "acc-eur",
+              name: "Main",
+              currency: "EUR",
+            },
+          ],
+          aspsp: { name: "Revolut", country: "LT" },
+        }),
+        { status: 200 }
+      );
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const provider = new EnableBankingProvider();
+    const result = await provider.completeAuthorization({ code: "auth-code" });
+    expect(result.accounts).toHaveLength(1);
+    expect(result.accounts[0].id).toBe("acc-eur");
+    expect(result.connection.id).toBe("sess-revolut");
+    expect(calls).toBeGreaterThan(1);
   });
 });
 
