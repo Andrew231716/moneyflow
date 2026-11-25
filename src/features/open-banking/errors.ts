@@ -56,7 +56,7 @@ export function friendlyProviderStatusMessage(
     return RATE_LIMIT_PARTIAL_MESSAGE;
   }
   if (code === "WRONG_REQUEST_PARAMETERS" || status === 422) {
-    return "Parametri non validi per la banca. Riprova la sincronizzazione tra poco.";
+    return "Parametri non validi per la banca. Ricarica l'elenco o riprova tra poco.";
   }
   if (status === 401 || status === 403 || code === "ACCESS_DENIED") {
     if (/revolut|consent|authoris|authoriz|sca|period/i.test(providerMessage ?? "")) {

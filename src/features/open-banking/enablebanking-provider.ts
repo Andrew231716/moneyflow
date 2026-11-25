@@ -398,8 +398,9 @@ export class EnableBankingProvider implements OpenBankingProvider {
 
   async getInstitutions(country: string): Promise<Institution[]> {
     const code = country.toUpperCase();
+    // service must be AIS|PIS (not "aisp") — wrong values → 422 WRONG_REQUEST_PARAMETERS
     const data = await ebFetch<{ aspsps: EbAspsp[] }>(
-      `/aspsps?country=${encodeURIComponent(code)}&service=aisp`
+      `/aspsps?country=${encodeURIComponent(code)}&service=AIS`
     );
     return (data.aspsps ?? []).map((a) => {
       const days =
@@ -427,7 +428,7 @@ export class EnableBankingProvider implements OpenBankingProvider {
     if (isRevolutPersonal(name) && country !== "LT") {
       try {
         const lt = await ebFetch<{ aspsps: EbAspsp[] }>(
-          `/aspsps?country=LT&psu_type=personal&service=aisp`
+          `/aspsps?country=LT&psu_type=personal&service=AIS`
         );
         const match = (lt.aspsps ?? []).find((a) =>
           isRevolutPersonal(a.name ?? "")
@@ -442,7 +443,7 @@ export class EnableBankingProvider implements OpenBankingProvider {
     }
 
     const aspsps = await ebFetch<{ aspsps: EbAspsp[] }>(
-      `/aspsps?country=${encodeURIComponent(country)}&psu_type=personal&service=aisp`
+      `/aspsps?country=${encodeURIComponent(country)}&psu_type=personal&service=AIS`
     );
     const normalizedTarget = name
       .normalize("NFD")
