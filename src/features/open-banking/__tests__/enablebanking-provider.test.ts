@@ -370,6 +370,29 @@ describe("Enable Banking booked + pending transactions", () => {
     expect(mapSessionAccount({}).id).toBe("");
   });
 
+  it("getInstitutions requests service=AIS (not aisp)", async () => {
+    process.env.ENABLEBANKING_APPLICATION_ID = "app-test-id";
+    process.env.ENABLEBANKING_PRIVATE_KEY = TEST_PRIVATE_KEY;
+
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      expect(url).toContain("service=AIS");
+      expect(url).not.toContain("service=aisp");
+      return new Response(
+        JSON.stringify({
+          aspsps: [{ name: "Intesa Sanpaolo", country: "IT" }],
+        }),
+        { status: 200 }
+      );
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const provider = new EnableBankingProvider();
+    const list = await provider.getInstitutions("IT");
+    expect(list).toHaveLength(1);
+    expect(list[0].id).toBe("IT::Intesa Sanpaolo");
+  });
+
   it("createConnection rewrites personal Revolut IT → LT and sends language", async () => {
     process.env.ENABLEBANKING_APPLICATION_ID = "app-test-id";
     process.env.ENABLEBANKING_PRIVATE_KEY = TEST_PRIVATE_KEY;
